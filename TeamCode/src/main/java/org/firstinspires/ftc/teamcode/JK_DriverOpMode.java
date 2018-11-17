@@ -473,9 +473,5 @@ public class JK_DriverOpMode extends LinearOpMode {
         //robot.rampMotor.setPower(0);
         //robot.loaderMotor.setPower(0);
 
-
-
-
-
     }
 }
