@@ -1,13 +1,15 @@
-        package org.firstinspires.ftc.teamcode;
 
-        import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-        import android.os.SystemClock;
-        import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
-        import com.qualcomm.robotcore.hardware.DcMotor;
-        import com.qualcomm.robotcore.hardware.GyroSensor;
-        import com.qualcomm.robotcore.util.Range;
 
-        /**
+
+package org.firstinspires.ftc.teamcode;
+
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import android.os.SystemClock;
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.GyroSensor;
+
+/**
  * Created by judenki on 11/12/16.
  *
  * NEED TO DO;
@@ -39,8 +41,6 @@ public class Drive {
     public static boolean LEFT_TURN    = false;
     private GyroSensor driveGyro       = null;
     private LinearOpMode myMode        = null;
-    public static final float MAX_TURN_TIME = (float)4000;
-    public static final float BUMP_TIME     = (float)2000;
 
 
 
@@ -55,40 +55,9 @@ public class Drive {
 
     private boolean motorsStopped = true;
 
-    /***********************************************************
-     * gyroturn5
-     *  startHeading  - input. heading when this "state" started
-     *  currHeading   - input. what is the heading when gt5 invoked
-     *  newHeading    - input. Destination heading
-     *  turnPwr       - input. -100 to 100, percent power. negative means counterclockwise
-     *  turnTime      - input. how long this "state" has been in play
-     * @return pwrSet - multiply the pwrSet by -1 for the starboard motor in the calling routine.
-     *   Note: The gyroturn5 will quit after MAX_TURN_TIME, and will give a "bump" to increase turn
-     *   power after BUMP_TIME.  The idea is to juice the power
-     */
-    public float gyroTurn5(int startHeading, int currHeading, int newHeading, int turnPwr, float turnTime){
-        float pwrSet = turnPwr;
-        int accumTurn = Math.abs(startHeading - currHeading);
-        accumTurn = (accumTurn > 360)? (360-accumTurn):accumTurn;
-        int cw = (turnPwr < 0)? -1: 1;
-        int transit = (((currHeading > newHeading) && (cw > 0)) ||
-                ((currHeading < newHeading) && (cw < 0))) ?  360 : 0;
-        int desiredRotation = Math.abs(transit + (cw*newHeading) + ((-1*cw)*currHeading));
-        desiredRotation = (desiredRotation > 360) ? desiredRotation - 360 : desiredRotation;
-        if((accumTurn < desiredRotation) && (turnTime < MAX_TURN_TIME)){
-            pwrSet = (turnTime > BUMP_TIME)? (float)turnPwr: (float)1.0;
-        }
-        else
-        {
-            pwrSet = 0;
-        }
-        return pwrSet;
-    }
 
 
     // Left and right are with respect to the robot
-
-
     public Drive( DcMotor[] _leftMotors, DcMotor[] _rightMotors ) {
         assert leftMotors != null;
         assert rightMotors != null;
@@ -167,23 +136,6 @@ public class Drive {
 
     }
 
-            /*****************************************************
-             * Fwd5 - a simplified forward Drive for autonomous
-             * double traveled
-             * double goal
-             * float pwr
-             * double duration
-             * @return - commanded power.  Do this once for each motor
-             */
-    public float Fwd5(double traveled,double goal,float pwr, double duration)
-    {
-        float multiplier = (duration > 2000)? (float)1.2:(float)1.0;
-
-        float cmdPwr = 0;
-        if (traveled < goal) cmdPwr = pwr*multiplier/(float)100.0;
-        cmdPwr = Range.clip(cmdPwr, -1, 1);
-        return cmdPwr;
-    }
 
     public boolean moveForward(double startPos, double distance , double power) {
 
@@ -452,7 +404,3 @@ public class Drive {
 
 
 }
-
-
-
-
