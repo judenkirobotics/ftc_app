@@ -1,406 +1,709 @@
+/*
+Built for Juden Ki 8578 and Kernel Panic 11959
+
+James K Rumsey
+12/18/2018
+
+OVERVIEW:
+Provides methods to autonomously move the robot.    Includes forward, reverse, pivots, and crab.
+To use this class it must first be configured.
+        getParameters()
+        configureDrive()
+Then movements can be initiated
+        move()
+Once initiated the update routine performs all of the monitoring.
+        update()
+This means the user must monitor if the requested move is complete.  This gives the user the ability
+to have other logic running while the movements are taking place.   This also allows the user to
+interrupt a movement.   Refer to the sample autonomous software JK_DriveTest for an example on how
+to use this class.
+
+
+REQUIRED:
+Gyro -- Supports REV IMU gyro
+Encoders -- Encoder cables to all drive motors are required, this means for for mecanum drive.
+Motors -- Encoder capable motors, all motors identical, asymmetric drive trains are not supported.
+                Tank drive trains currently only support two motors
+Drive Train -- Drive train should be tight and responsive. Variable drag, variable traction,
+               asymmetry in treads, will all result in less accurate results.
+UNITS  --  Angles are measured in degrees the 'forward' direction of the robot when initialized
+                 is 0 degrees.   Pivoting right will increase up till 360 is reached then wrap to
+                 0.   Radians are not currently supported.
+           Distance is unit less.   Just be consistent on the desired distance units and the wheel
+                 diameter units.
+
+
+PARAMETERS:
+    DcMotor        frontRight     -- Front right motor on robot for mecanum, or right for tank.
+    DcMotor        frontLeft
+    DcMotor        rearRight
+    DcMotor        rearLeft
+    DcMotor.Direction frPolarity  -- FORWARD(default) or REVERSE depending on motor orientation.
+    DcMotor.Direction flPolarity  -- REVERSE(default)
+    DcMotor.Direction rrPolarity  -- FORWARD(default)
+    DcMotor.Direction rlPolarity  -- REVERSE(default)
+    BNO055IMU      imu            -- Inertial management unit for
+    DriveType      driveType      -- Either TANK or MECANUM
+    double         motorRatio     -- This is the number of counts for a single rotation of the motor
+                                     shaft.
+    double         gearRatio      -- This is the ratio on the gearbox.  If no gearbox is present
+                                     set this value to 1.
+    double         wheelDiameter  -- The diameter of the wheel attached to the motor shaft.  All
+                                     DRIVE wheels MUST be the same diameter.  PASSIVE wheels can be
+                                     any size.
+    double         mecanumAngle   -- The angle of the mecanum roller relative to the axle through
+                                     the front right wheel.  Most are 45.
+    PivotTolerance pivotTolerance -- The margin of error allowed on a pivot.   If the tolerance is
+                                     set to ONE_DEGREE and the pivot target is 90 then a pivot of 89
+                                     to 91 will be considered successful.
+    double         turnBackoff    -- Expressed as a percentage 0.0 to 1.0 the amount of power the
+                                     pivot is reduced by as it nears completion of the pivot.  This
+                                     power reduction occurs inside the window created by the
+                                     backoffMultiplier * pivotTolerance.    A backoff of 3 and a
+                                     tolerance of 2 would start power reduction to the motors when
+                                     within 6 degrees of the pivot target.   WARNING:  The four
+                                     pivot parameters will be extremely robot dependent.   Robot
+                                     weight (momentum), wheel/tread traction, and motor braking
+                                     force all impact accurate turns.
+    double         backoffMultiplier -- Scaler used to determine backoff window
+    int            encoderTolerance  -- used to determine the completion window for encoder based
+                                     movements.   Minimum value is half the motorRatio.   This may
+                                     still be too small for larger/heavier robots.
+    double         minStartPower     --  The minimum amount of power that will be supplied to the
+                                     motors when starting a maneuver regardless of specified power.
+    double         minTurnPower      --  The minimum amount of power that will be supplied to the
+                                     motors when finishing a pivot regardless of backoff.  Balance
+                                     this
+    LinearOpMode   opMode            -- the telop/autonomous program running. Should always be 'this'
+    boolean        debug             --  If set to true will send messages to telemetry.
 
 
 
+STILL TO DO:
+    Add drift correction to FORWARD and REVERSE
+    Verify Mecanum works for FORWARD, REVERSE, PIVOTLEFT, and PIVOTRIGHT
+    Debug  CRABLEFT and CRABRIGHT
+    Add multi motor support for tank drive??  Afe to do this??
+    Maybe eliminate some of the tank/mecanum checks.   Could just double set motors a lot of the
+        time with no negative results.  Code is slightly less efficient but could condense it
+        significantly.
+    Add support for old school gyro??  Add support for dual gyro / sanity check??
+    Create a telop() mode that can be used to 'discover' best parameter settings
+    Any reason to allow multiple initialPowers?   Perhaps for more complex movements.
+
+
+*/
 package org.firstinspires.ftc.teamcode;
 
-import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import android.os.SystemClock;
-import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
-import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.GyroSensor;
 
-/**
- * Created by judenki on 11/12/16.
- *
- * NEED TO DO;
- *
- * Add open loop (no time) and closed loop (time based) controls for moveForward and turn
- *
- * Rename moveForward() to move()
- *
- * DONE -- Add method to handle WHEEL_CIRC, WHEEL_RPM, and TURN_PER_SECOND.
- *
- * Get motors to run with the encoder active to utilize the controllers PID.
- */
+
+import com.qualcomm.hardware.bosch.BNO055IMU;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.Gyroscope;
+import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.util.ElapsedTime;
+import com.qualcomm.robotcore.util.Range;
+import com.sun.tools.javac.tree.DCTree;
+
+import org.firstinspires.ftc.robotcontroller.external.samples.HardwarePushbot;
+import org.firstinspires.ftc.robotcore.external.Func;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
+import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
+import org.firstinspires.ftc.robotcore.external.navigation.Orientation;
+
 
 public class Drive {
-    public static int prevHeading = 176;
-    public static int newHeading = 178;
-    private DcMotor[] leftMotors   = null;
-    private DcMotor[] rightMotors  = null;
 
-    private double MIN_DRIVE_DISTANCE = 0.0;
-    private double MAX_DRIVE_DISTANCE = 120.0;
-
-    private double FAST_POWER          = 0.6;
-    private double SLOW_POWER          = 0.3;
-    private double CORRECTION_POWER    = 0.15;
-    private double RIGHT_SIGN          = 1;
-    private double LEFT_SIGN           =-1;
-    public static boolean RIGHT_TURN   = true;
-    public static boolean LEFT_TURN    = false;
-    private GyroSensor driveGyro       = null;
-    private LinearOpMode myMode        = null;
+    public enum DriveType  {TANK, MECANUM;}
+    public enum MoveType   {FORWARD, REVERSE, CRABLEFT, CRABRIGHT, PIVOTLEFT, PIVOTRIGHT, LEFTFORWARD, LEFTREVERSE, RIGHTFORWARD, RIGHTREVERSE, STOP;}
+    public enum MoveStatus {INITIATED, INPROGRESS, COMPLETE, AVAILABLE;}
+    public enum  PivotTolerance {ZERO_DEGREES, ONE_DEGREE, TWO_DEGREES, THREE_DEGREES, FOUR_DEGREES, FIVE_DEGREES;}
 
 
 
+    //NOTE:   Set all of the values to "known good" values except for the motors, imu, and opMode
+    public class Parameters {
+        public DcMotor        frontRight     = null;
+        public DcMotor        frontLeft      = null;
+        public DcMotor        rearRight      = null;
+        public DcMotor        rearLeft       = null;
+        public DcMotor.Direction frPolarity  = DcMotor.Direction.FORWARD;
+        public DcMotor.Direction flPolarity  = DcMotor.Direction.REVERSE;
+        public DcMotor.Direction rrPolarity  = DcMotor.Direction.FORWARD;
+        public DcMotor.Direction rlPolarity  = DcMotor.Direction.REVERSE;
+        public BNO055IMU      imu            = null;
+        public DriveType      driveType      = DriveType.TANK;
+        public double         motorRatio     = 28;
+        public double         gearRatio      = 40;
+        public double         wheelDiameter  = 2.5;
+        public double         mecanumAngle   = 45;
+        public PivotTolerance pivotTolerance = PivotTolerance.ONE_DEGREE;
+        public double         turnBackoff    = 0.05;
+        public double         backoffMultiplier = 3;
+        public int            encoderTolerance = 15;
+        public double         minStartPower  = 0.3;
+        public double         minTurnPower   = 0.3;
+        public LinearOpMode   opMode         = null;
+        public boolean        debug          = false;
+    }
+
+    private class Maneuver {
+        private MoveType  type;
+        private int       rightTarget;
+        private int       leftTarget;
+        private int       rearRightTarget;
+        private int       rearLeftTarget;
+        private float     angleTarget;
+        private double    initialPower;
+        private MoveStatus status            = MoveStatus.COMPLETE;
+        private double    rfPower;
+        private double    lfPower;
+        private double    rrPower;
+        private double    lrPower;
+    }
+
+    private boolean     dConfigured       = false;
+    private boolean     backoffStarted    = false;
+    private Parameters  par               = new Parameters();
+    private Maneuver    maneuver          = new Maneuver();
+    private double      circumference     = 0;
+    private double      driveRatio        = 0;
+    private double      crabRatio         = 0;
 
 
-    private double WHEEL_CIRC    = 13;
-    private double WHEEL_RPM     = 2;   //Misnamed, fix should be RPS second not minute
-
-    private double TURN_PER_SECOND = 79.5;
-
-    private long driveStopTime  = 0;
-
-    private boolean motorsStopped = true;
 
 
 
-    // Left and right are with respect to the robot
-    public Drive( DcMotor[] _leftMotors, DcMotor[] _rightMotors ) {
-        assert leftMotors != null;
-        assert rightMotors != null;
-        assert leftMotors.length > 0;
-        assert rightMotors.length > 0;
-        this.leftMotors = _leftMotors;
-        this.rightMotors = _rightMotors;
-        // Set all DC Motors to run without encoders
-        for( DcMotor dcm : leftMotors ) {
-            dcm.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-            //dcm.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        }
-        for (DcMotor dcm : rightMotors){
-            dcm.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-            //dcm.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        }
+    public Parameters getParameters () {
+        return (par);
     }
 
 
-    public void turn(double degrees, double power) {
-        long time;
-        double leftSign;
-        double rightSign;
 
-        if (degrees > 0) {
-            rightSign = -1;
-            leftSign  = -1;
-            time = turnTime(degrees);
+
+    //
+    // Perform some basic sanity checking on the calibration data.
+    //
+    public boolean configureDrive (Parameters parameters)
+    {
+        dConfigured = true;
+
+        // Java Kung Fu is weak should be a way to do this without the copy
+        par.frontRight    = parameters.frontRight;
+        par.frontLeft     = parameters.frontLeft;
+        par.rearRight     = parameters.rearRight;
+        par.rearLeft      = parameters.rearLeft;
+        par.frPolarity    = parameters.frPolarity;
+        par.rrPolarity    = parameters.rrPolarity;
+        par.flPolarity    = parameters.flPolarity;
+        par.rlPolarity    = parameters.rlPolarity;
+        par.driveType     = parameters.driveType;
+        par.imu           = parameters.imu;
+        par.motorRatio    = parameters.motorRatio;
+        par.gearRatio     = parameters.gearRatio;
+        par.wheelDiameter = parameters.wheelDiameter;
+        par.mecanumAngle  = parameters.mecanumAngle;
+        par.pivotTolerance     = parameters.pivotTolerance;
+        par.debug              = parameters.debug;
+        par.turnBackoff        = 1 - parameters.turnBackoff;
+        par.encoderTolerance   = parameters.encoderTolerance;
+        par.minStartPower = parameters.minStartPower;
+        par.minTurnPower  = parameters.minTurnPower;
+        par.debug         = parameters.debug;
+        circumference     = Math.PI * par.wheelDiameter;
+        driveRatio        = par.motorRatio * par.gearRatio;
+        crabRatio         = driveRatio * (par.mecanumAngle / 100);
+
+
+        //Verify linearOpMode first to prevent crashes
+        if (parameters.opMode == null) {
+            dConfigured = false;
+            return (dConfigured);
+        }
+        par.opMode = parameters.opMode;
+        par.opMode.telemetry.addData("Status", "Configuring Drive....");
+
+        //  Verify valid drive type
+        if ((parameters.driveType != DriveType.TANK) && (parameters.driveType != DriveType.MECANUM)) {
+            par.opMode.telemetry.addData("Invalid Drive Type", parameters.driveType);
+            dConfigured = false;
+        }
+
+        // Verify valid motors for mecanum
+        if ((parameters.driveType == DriveType.MECANUM) &&
+                ((parameters.frontRight == null) ||
+                 (parameters.frontLeft == null)  ||
+                 (parameters.rearRight == null)  ||
+                 (parameters.rearLeft == null))) {
+            par.opMode.telemetry.addData("Invalid Motor(s) Front Right ", (parameters.frontRight == null));
+            par.opMode.telemetry.addData("Invalid Motor(s) Front Left  ", (parameters.frontLeft == null));
+            par.opMode.telemetry.addData("Invalid Motor(s) Rear Right  ", (parameters.rearRight == null));
+            par.opMode.telemetry.addData("Invalid Motor(s) Rear Left   ", (parameters.rearLeft == null));
+            dConfigured = false;
+        }
+
+        // Verify valid motors for tank
+        if ((parameters.driveType == DriveType.TANK) &&
+                 ((parameters.frontRight == null) ||
+                  (parameters.frontLeft == null))){
+            par.opMode.telemetry.addData("Invalid Motor(s) Front Right ", (parameters.frontRight == null));
+            par.opMode.telemetry.addData("Invalid Motor(s) Front Left  ", (parameters.frontLeft == null));
+            dConfigured = false;
+        }
+
+        // Verify valid imu available.
+        if ((parameters.imu == null) || (!parameters.imu.isGyroCalibrated())) {
+            par.opMode.telemetry.addData("Invalid IMU              ", (parameters.imu == null));
+            par.opMode.telemetry.addData("Invalid IMU Configured   ", parameters.imu.isGyroCalibrated());
+            dConfigured = false;
+        }
+
+        //Verify marginally sane numbers for motor, wheel and gear ratio
+        if ((parameters.gearRatio <= 0) || (parameters.wheelDiameter <=0) || (parameters.motorRatio <=0)) {
+            par.opMode.telemetry.addData("Invalid gear ratio     ", parameters.gearRatio);
+            par.opMode.telemetry.addData("Invalid motor ratio    ", parameters.motorRatio);
+            par.opMode.telemetry.addData("Invalid wheel diameter ", parameters.wheelDiameter);
+            dConfigured = false;
+        }
+        if (parameters.encoderTolerance < parameters.motorRatio/2) {
+            par.opMode.telemetry.addData("WARNING -- encoderTolerance too small", parameters.encoderTolerance);
+            par.opMode.telemetry.addData("           encoderTolerance set to   ", (int)parameters.motorRatio/2);
+            par.encoderTolerance = (int)parameters.motorRatio/2;
+        }
+        if ((parameters.driveType == DriveType.MECANUM) && (parameters.mecanumAngle <=0) && (parameters.mecanumAngle > 90)) {
+            par.opMode.telemetry.addData("Invalid mecanum angle    ", parameters.mecanumAngle);
+            dConfigured = false;
+        }
+
+        //Check for reasonable minimum power settings
+        if (par.minStartPower < 0.3) {
+            par.opMode.telemetry.addData("Warning minimum start power may be low", par.minStartPower);
+        }
+        if (par.minTurnPower < 0.3) {
+            par.opMode.telemetry.addData("Warning minimum turn power may be low", par.minTurnPower);
+        }
+
+        //Initialize maneuver to complete
+        maneuver.status = MoveStatus.AVAILABLE;
+        if (dConfigured) {
+            par.opMode.telemetry.addLine("     :SUCCESS");
+            par.opMode.telemetry.update();
         }
         else {
-            rightSign = 1;
-            leftSign  = 1;
-            time = turnTime(degrees) * -1;
+            par.opMode.telemetry.addLine("FAILED");
+            par.opMode.telemetry.update();
         }
 
-        for(DcMotor dcm : leftMotors){
-            dcm.setPower(leftSign * power);
-        }
-
-        for(DcMotor dcm : rightMotors) {
-            dcm.setPower(rightSign * power);
-        }
-
-        driveStopTime = time + SystemClock.elapsedRealtime();
-        motorsStopped = false;
+        return (dConfigured);
     }
 
 
-    public void drift(double power) {
-        if (power > 0) {
-            for(DcMotor dcm : leftMotors){
-                dcm.setPower(dcm.getPower() +(power));
-            }
-            for(DcMotor dcm : rightMotors) {
-                dcm.setPower(dcm.getPower() +(power));
+    //Calculate the decoder counts for te requested maneuver
+    private int encoderCounts (double distance, MoveType mType) {
+        double ratio = driveRatio;
+        if ((mType == MoveType.CRABLEFT) || (mType == MoveType.CRABRIGHT)) {
+            ratio = crabRatio;
+        }
+        return (int)(Math.abs(distance) / circumference * ratio);
+    }
+
+
+    //Configure the motors to run with or without the encoders depending on the maneuver.
+    //If the maneuver requires the encoder set the encoder.
+    //Always configure all of the motors.   This will allow for complex movements to be implemented
+    //in the future.
+    private void configureMotors () {
+        //Set motors to run with encoders at initial power if FORWARD, REVERSE, CRAB
+        //Set motors to run without encoders if PIVOT
+
+        par.frontRight.setDirection(par.frPolarity);
+        par.frontLeft.setDirection(par.flPolarity);
+        par.rearRight.setDirection(par.rrPolarity);
+        par.rearLeft.setDirection(par.rlPolarity);
+
+        if ((maneuver.type == MoveType.PIVOTLEFT) || (maneuver.type == MoveType.PIVOTRIGHT)) {
+            par.frontRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            par.frontLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            if (par.driveType == DriveType.MECANUM) {
+                par.rearRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+                par.rearLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
             }
         }
         else {
-            for(DcMotor dcm : leftMotors){
-                dcm.setPower(dcm.getPower() +(power));
-            }
-            for(DcMotor dcm : rightMotors) {
-                dcm.setPower(dcm.getPower() +(power));
-            }
-        }
+            par.frontRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            par.frontRight.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+            par.frontRight.setTargetPosition(maneuver.rightTarget);
+            par.frontLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            par.frontLeft.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+            par.frontLeft.setTargetPosition(maneuver.leftTarget);
 
+
+            if (par.driveType == DriveType.MECANUM) {
+                par.rearRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+                par.rearLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+                par.rearRight.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+                par.rearLeft.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+                if (maneuver.type == MoveType.CRABLEFT) {
+                    par.frontRight.setTargetPosition(-1* maneuver.rightTarget);
+                    par.frontLeft.setTargetPosition(maneuver.leftTarget);
+                    par.rearRight.setTargetPosition(maneuver.rearRightTarget);
+                    par.rearLeft.setTargetPosition(-1* maneuver.rearLeftTarget);
+                }
+                else if (maneuver.type == MoveType.CRABRIGHT) {
+                    par.frontRight.setTargetPosition(maneuver.rightTarget);
+                    par.frontLeft.setTargetPosition(-1* maneuver.leftTarget);
+                    par.rearRight.setTargetPosition(-1* maneuver.rearRightTarget);
+                    par.rearLeft.setTargetPosition(maneuver.rearLeftTarget);
+                }
+                else {  // FORWARD, REVERSE
+                    par.frontRight.setTargetPosition(maneuver.rightTarget);
+                    par.frontLeft.setTargetPosition(maneuver.leftTarget);
+                    par.rearRight.setTargetPosition(maneuver.rearRightTarget);
+                    par.rearLeft.setTargetPosition(maneuver.rearLeftTarget);
+                }
+            }
+
+        }
     }
 
-    public void driveMove(double forwardPower, double driftPower){
-        for (DcMotor dcm : leftMotors){
-            dcm.setPower( - forwardPower + driftPower);
-        }
-        for (DcMotor dcm : rightMotors){
-            dcm.setPower( forwardPower + driftPower);
-        }
 
+    // Power the two(four) motors with the specified powers.   Each gets its own power to allow
+    // for complicated movements in the future.
+    private void powerMotors (double rf, double lf, double rr, double lr) {
+        par.frontRight.setPower(rf);
+        par.frontLeft.setPower(lf);
+        if (par.driveType == DriveType.MECANUM) {
+            par.rearRight.setPower(rr);
+            par.rearLeft.setPower(lr);
+        }
+        maneuver.rfPower = rf;
+        maneuver.lfPower = lf;
+        maneuver.rrPower = rr;
+        maneuver.lrPower = lr;
     }
 
 
-    public boolean moveForward(double startPos, double distance , double power) {
-
-        double moveDistance;
-        long   time;
-
-        // Input distance will be in inches, perform a range check
-        moveDistance = rangeCheck(distance);
-
-        //Calculate how long to move.
-        time =  moveTime(moveDistance, WHEEL_RPM, WHEEL_CIRC);
-
-        for (DcMotor dcm : leftMotors){
-            dcm.setPower( - power);
-        }
-        for (DcMotor dcm : rightMotors){
-            dcm.setPower( power);
-        }
-
-        driveStopTime = time + SystemClock.elapsedRealtime();
-        motorsStopped = false;
-        // once we figure out the encoders, we'll put that in here.
-        return true;
+    //Navigate between 0 and 360
+    public float mod360 (float angle) {
+        return ((int)angle - ((int)angle/360)*360);  //Integer math
     }
 
-    /*
-     *  Make a method to consolidate all of the different gyro based turns the students have come up with.
-     *  Accept the new absolute heading and direction of turn.   Initialization routine must be called
-     *  first to set parameters fastPower, slowPower, correctionPower, rightSign, leftSign.
-     */
-    public void gyroTurn2(int newHeading, int clockwise){
-        int currHeading = driveGyro.getHeading();
-        int accumTurn = 0;
-        int cw = (clockwise < 0) ? -1 : 1;
-        int transit = (((currHeading > newHeading) && (cw > 0)) ||
-                ((currHeading < newHeading) && (cw < 0))) ?  360 : 0;
-        int desiredRotation = Math.abs(transit + (cw*newHeading) + ((-1*cw)*currHeading));
-        desiredRotation = (desiredRotation > 360) ? desiredRotation - 360 : desiredRotation;
-        prevHeading = currHeading;
-
-        while((accumTurn < desiredRotation) &&
-                (clockwise != 0) &&
-                (myMode.opModeIsActive())){
-            double turnDir = (clockwise > 0) ? RIGHT_SIGN : LEFT_SIGN;
-            double powerLevel = ((desiredRotation - accumTurn) > 10) ? FAST_POWER : SLOW_POWER;
-            driveMove(0, turnDir * powerLevel);
-            //numberSteps[leg]++;
-            currHeading = driveGyro.getHeading();
-            if (Math.abs(prevHeading - currHeading) > 350) {
-                if (prevHeading < currHeading) {
-                    accumTurn += prevHeading + 360 - currHeading;
-                }
-                else {
-                    accumTurn += currHeading + 360 - prevHeading;
-                }
-            }
-            else {
-                accumTurn += Math.abs(prevHeading - currHeading);
-            }
-            prevHeading = currHeading;
+    //Convert the imu heading data to 0 to 360
+    public float getHeading () {
+        float temp = par.imu.getAngularOrientation().firstAngle;
+        if (temp < 0) {
+            temp = Math.abs(temp);
         }
-        driveMove(0,0);
-    }
-    public void gyroTurn(int newHeading, boolean direction) {
-
-        /*
-         * Four cases to consider.  First determine if new Heading is greater or less than current heading.
-         * Then determine if they turn right or left to reach new heading.
-         */
-
-
-        if (newHeading > driveGyro.getHeading()) {
-            if (direction == RIGHT_TURN) {
-                driveMove(0,RIGHT_SIGN*FAST_POWER);
-                while ((newHeading - driveGyro.getHeading()>20) && myMode.opModeIsActive()) {
-                    // Add time based check to keep loop from getting stuck
-                }
-                driveMove(0,RIGHT_SIGN*SLOW_POWER);
-                while ((newHeading - driveGyro.getHeading()>0) && myMode.opModeIsActive()) {
-                    // Add time based check to keep loop from getting stuck
-                }
-                driveMove(0,0);
-                if (newHeading - driveGyro.getHeading() < 0) {
-                    driveMove(0,LEFT_SIGN*CORRECTION_POWER);
-                    while ((newHeading - driveGyro.getHeading() < 0) && myMode.opModeIsActive()) {
-                        // Add time based check to keep loop from getting stuck
-                    }
-                }
-
-                driveMove(0,0);
-
-            }
-            // Turn left to reach new heading must handle crossing zero
-            else {
-                if (driveGyro.getHeading() > 0) {
-                    //Pass zero to get to a positive heading number
-                    driveMove(0,LEFT_SIGN*FAST_POWER);
-                    while((driveGyro.getHeading() > 10) && myMode.opModeIsActive()) {
-                        // Add time based check to keep loop from getting stuck
-                    }
-                    driveMove(0,LEFT_SIGN*SLOW_POWER);
-                    while((driveGyro.getHeading() > 0) && myMode.opModeIsActive()) {
-                        // Add time based check to keep loop from getting stuck
-                    }
-                }
-                else {
-                    driveMove(0,LEFT_SIGN*SLOW_POWER);
-                    while((driveGyro.getHeading() < 10) && myMode.opModeIsActive()) {
-                        // Add time based check to keep loop from getting stuck
-                    }
-                }
-
-                //Now that past zero keep turning to new heading
-                driveMove(0,LEFT_SIGN*FAST_POWER);
-                while ((driveGyro.getHeading() > newHeading+10) && myMode.opModeIsActive()) {
-                    // Add time based check to keep loop from getting stuck
-                }
-                driveMove(0,LEFT_SIGN*SLOW_POWER);
-                while ((driveGyro.getHeading() > newHeading) && myMode.opModeIsActive()) {
-                    // Add time based check to keep loop from getting stuck
-                }
-                if (driveGyro.getHeading() - newHeading < 0) {
-                    driveMove(0,RIGHT_SIGN*CORRECTION_POWER);
-                    while ((driveGyro.getHeading() - newHeading < 0) && myMode.opModeIsActive()) {
-                        // Add time based check to keep loop from getting stuck
-                    }
-                }
-                driveMove(0,0);
-
-            }
-
+        else if (temp > 0) {
+            temp = 360 - temp;
         }
-
-
-        // New heading is less than current heading
         else {
-            if (direction == RIGHT_TURN) {
-                //Handle crossing zero
-                driveMove(0,RIGHT_SIGN*FAST_POWER);
-                while ((driveGyro.getHeading() < 350) && myMode.opModeIsActive()) {
-                    // Add time based check to keep loop from getting stuck
-                }
-                driveMove(0,RIGHT_SIGN*SLOW_POWER);
-                while ((driveGyro.getHeading() > 10) && myMode.opModeIsActive()) {
-                    // Add time based check to keep loop from getting stuck
-                }
-                driveMove(0,0);
+            temp = 0;  //redundant
+        }
+        return temp;
+    }
 
-                // Turn to new heading
-                driveMove(0,RIGHT_SIGN*FAST_POWER);
-                while ((newHeading - driveGyro.getHeading() > 10) && myMode.opModeIsActive()) {
-                    // Add time based check to keep loop from getting stuck
+
+    // Four different cases.   Pivoting either left or right and the does the robot have to cross
+    // the zero degree threshold.
+    private float turnRemaining () {
+        float remaining = maneuver.angleTarget - getHeading();
+
+        if ((maneuver.type == MoveType.PIVOTRIGHT) && (remaining < 0)) {
+            remaining += 360;  //OK
+        }
+        else if ((maneuver.type == MoveType.PIVOTLEFT) && (remaining < 0)) {
+            remaining = remaining * -1;
+        }
+        else if ((maneuver.type == MoveType.PIVOTRIGHT) && (remaining > 0)) {
+           //Nothing to do, value should be correct.
+        }
+        else if ((maneuver.type == MoveType.PIVOTLEFT) && (remaining > 0)) {
+            remaining = 360 - remaining;  //OK
+        }
+        else {
+            remaining = 0;
+        }
+
+        return remaining;
+    }
+
+
+
+
+
+
+
+    //Calculates power for drive motors based on the input parameters.  NOTE: does not
+    //set power to the motors this is only done in the update section.  Val is
+    //interpreted based on the type of movement specified.  Calling move before the
+    // previous move is complete will result in the value being overwritten.
+    //  FORWARD, CRAB, REVERSE -- val is distance, only positive is accepted.
+    //  PIVOT(s) -- val is in degrees and relative to current heading   For example if the current
+    //            heading is 100 degrees and val was set to 40 a turn would be made to either 140
+    //            or 60 depending on the type of PIVOT requested.   Zero boundary protection is
+    //            implemented.  OVERTURN protection IS NOT implemented.   Care should be taken on
+    //            pivots with ZERO_DEGREE tolerance.    These may not be possible on certain robot
+    //            drivetrains due to a combination of slip, momentum, and braking traction.  Only
+    //            the magnitude of val is considered.
+    //  startPower is the initial power supplied to the motors.
+    public void move (MoveType mType, double val, double startPower)
+    {
+        double power = startPower;
+        double direction = 1;
+
+        //Sanity check the inputs
+        if (mType == MoveType.REVERSE) {
+            direction = -1;
+        }
+        if (startPower < par.minStartPower) {
+            power = par.minStartPower;
+        }
+        maneuver.type = mType;
+
+        //Calculate encoder counts
+        switch (mType) {
+            case CRABLEFT:
+            case CRABRIGHT:
+            {
+                maneuver.rightTarget = encoderCounts(val*direction, mType);
+                if (mType == MoveType.CRABLEFT) {
+                    maneuver.rightTarget = maneuver.rightTarget * -1;
                 }
-                driveMove(0,RIGHT_SIGN*SLOW_POWER);
-                while ((newHeading - driveGyro.getHeading() > 0) && myMode.opModeIsActive()) {
-                    // Add time based check to keep loop from getting stuck
+                maneuver.leftTarget  = -1 * maneuver.rightTarget;
+                maneuver.rearRightTarget = -1 * maneuver.rightTarget;
+                maneuver.rearLeftTarget = maneuver.rightTarget;
+                maneuver.angleTarget = 0;
+                maneuver.initialPower = power;
+                maneuver.status = MoveStatus.INITIATED;
+                break;
+            }
+            case FORWARD:
+            case REVERSE:
+            {
+
+                maneuver.rightTarget = encoderCounts(val*direction, mType);
+                if (mType == MoveType.REVERSE) {
+                    maneuver.rightTarget = -1 * maneuver.rightTarget;
                 }
-                if (newHeading - driveGyro.getHeading() < 0) {
-                    driveMove(0,LEFT_SIGN*CORRECTION_POWER);
-                    while ((newHeading - driveGyro.getHeading() < 0) && myMode.opModeIsActive()) {
-                        // Add time based check to keep loop from getting stuck
+                maneuver.leftTarget  = maneuver.rightTarget;
+                maneuver.rearRightTarget = maneuver.rightTarget;
+                maneuver.rearLeftTarget = maneuver.rightTarget;
+                maneuver.angleTarget = 0;
+                maneuver.initialPower = power;
+                maneuver.status = MoveStatus.INITIATED;
+                break;
+            }
+            case LEFTFORWARD:
+            case LEFTREVERSE:
+            {
+                maneuver.leftTarget = encoderCounts(val*direction, mType);
+                if (mType == MoveType.LEFTREVERSE) {
+                    maneuver.leftTarget = -1 * maneuver.leftTarget;
+                }
+                maneuver.rightTarget  = 0;
+                maneuver.rearRightTarget = 0;
+                maneuver.rearLeftTarget = maneuver.leftTarget;
+                maneuver.angleTarget = 0;
+                maneuver.initialPower = power;
+                maneuver.status = MoveStatus.INITIATED;
+                break;
+            }
+            case RIGHTFORWARD:
+            case RIGHTREVERSE:
+            {
+                maneuver.rightTarget = encoderCounts(val*direction, mType);
+                if (mType == MoveType.RIGHTREVERSE) {
+                    maneuver.rightTarget = -1 * maneuver.rightTarget;
+                }
+                maneuver.leftTarget  = 0;
+                maneuver.rearRightTarget = maneuver.rightTarget;
+                maneuver.rearLeftTarget = 0;
+                maneuver.angleTarget = 0;
+                maneuver.initialPower = power;
+                maneuver.status = MoveStatus.INITIATED;
+                break;
+            }
+            case PIVOTLEFT:
+            case PIVOTRIGHT:
+            {
+                maneuver.status = MoveStatus.INITIATED;
+                maneuver.rightTarget = 0;
+                maneuver.leftTarget  = 0;
+                maneuver.initialPower = power;
+                maneuver.angleTarget = Math.abs(mod360((int)val));
+                break;
+            }
+            case STOP:
+            default:
+            {
+                maneuver.status = MoveStatus.AVAILABLE;
+                break;
+            }
+
+        }
+
+        if (par.debug) {
+            par.opMode.telemetry.addData("Manuever Type", maneuver.type);
+            par.opMode.telemetry.addData("Manuever Status", maneuver.status);
+            par.opMode.telemetry.update();
+        }
+
+    }
+
+    // Returns true if the requested move is complete, false otherwise
+    public MoveStatus getMoveStatus ()
+    {
+        return (maneuver.status);
+    }
+
+
+    // Used for pivots.  Returns the sign to use on motor power settings.  This is because turns
+    // do not use encoders.
+    double rightSign() {
+        if (maneuver.type == MoveType.PIVOTLEFT) {
+            return (1);
+        }
+        return (-1);
+    }
+    double leftSign() {
+        if (maneuver.type == MoveType.PIVOTLEFT) {
+            return (-1);
+        }
+        return (1);
+    }
+
+    // Sets power to motors and monitors in the requested move has been completed.
+    public void update ()
+    {
+
+
+        // Attempt nothing if not configured
+        if (dConfigured) {
+            switch (maneuver.status) {
+                case INITIATED:
+                {
+                    configureMotors();
+                    if ((maneuver.type == MoveType.PIVOTLEFT) || (maneuver.type == MoveType.PIVOTRIGHT)) {
+                        //Do not apply too much power if we are already within backoff window
+                        if (turnRemaining() < (par.backoffMultiplier * par.pivotTolerance.ordinal())) {
+                            powerMotors(rightSign() * par.minTurnPower,
+                                        leftSign()  * par.minTurnPower,
+                                        rightSign() * par.minTurnPower,
+                                        leftSign()  * par.minTurnPower);
+                            backoffStarted = true;
+                        }
+                        else {
+                            powerMotors(rightSign() * maneuver.initialPower,
+                                        leftSign()  * maneuver.initialPower,
+                                        rightSign() * maneuver.initialPower,
+                                        leftSign()  * maneuver.initialPower);
+                            backoffStarted = false;
+                        }
+
                     }
-                }
-                driveMove(0,0);
-
-            }
-            // Turn left to reach new heading
-            else {
-                driveMove(0,LEFT_SIGN*FAST_POWER);
-                while ((driveGyro.getHeading() - newHeading > 10) && myMode.opModeIsActive()) {
-                    // Add time based check to keep loop from getting stuck
-                }
-                driveMove(0,LEFT_SIGN*SLOW_POWER);
-                while ((driveGyro.getHeading() - newHeading > 00)  && myMode.opModeIsActive()){
-                    // Add time based check to keep loop from getting stuck
-                }
-                driveMove(0,0);
-                if (driveGyro.getHeading() - newHeading < 0) {
-                    driveMove(0,RIGHT_SIGN*CORRECTION_POWER);
-                    while ((driveGyro.getHeading() - newHeading < 0) && myMode.opModeIsActive()) {
-                        // Add time based check to keep loop from getting stuck
+                    else if (maneuver.type == MoveType.STOP) {
+                        powerMotors(0,0,0,0);
                     }
+                    else {
+                        powerMotors(maneuver.initialPower, maneuver.initialPower, maneuver.initialPower, maneuver.initialPower);
+                    }
+                    maneuver.status = MoveStatus.INPROGRESS;
+                    break;
                 }
-                driveMove(0,0);
+                case INPROGRESS:
+                {
+                    //If anything but pivot wait until the motors stop, for pivot use the
+                    // gyro to control motors
+                    if ((maneuver.type == MoveType.PIVOTLEFT) || (maneuver.type == MoveType.PIVOTRIGHT)) {
+                        float  togo;
+                        togo = turnRemaining();
+
+                        if (togo < par.pivotTolerance.ordinal()) {
+                            //Stop
+                            powerMotors(0,0,0,0);
+                            maneuver.status = MoveStatus.COMPLETE;
+                        }
+                        else if (togo < (par.backoffMultiplier * par.pivotTolerance.ordinal())) {
+                            //Start slowing do not slow past minimum speed.
+                            powerMotors((Math.abs(maneuver.rfPower * par.turnBackoff) < par.minTurnPower) ? par.minTurnPower * rightSign() : maneuver.rfPower * par.turnBackoff,
+                                        (Math.abs(maneuver.lfPower * par.turnBackoff) < par.minTurnPower) ? par.minTurnPower * leftSign()  : maneuver.lfPower * par.turnBackoff,
+                                        (Math.abs(maneuver.rrPower * par.turnBackoff) < par.minTurnPower) ? par.minTurnPower * rightSign() : maneuver.rrPower * par.turnBackoff,
+                                        (Math.abs(maneuver.lrPower * par.turnBackoff) < par.minTurnPower) ? par.minTurnPower * leftSign()  : maneuver.lrPower * par.turnBackoff);
+                            backoffStarted = true;
+                        }
+                        else {
+                            //If the backoff has started and we are in here then we went to far.
+                            //Stop the robot and try to make a correcting turn.
+                            if (backoffStarted) {
+                                powerMotors(0,0,0,0);
+                                if (maneuver.type == MoveType.PIVOTLEFT) {
+                                    maneuver.type = MoveType.PIVOTRIGHT;
+                                }
+                                else {
+                                    maneuver.type = MoveType.PIVOTLEFT;
+                                }
+                                maneuver.status = MoveStatus.INITIATED;
+                                maneuver.initialPower = par.minTurnPower;
+                            }
+                        }
+                    }
+                    else if (maneuver.type == MoveType.STOP) {
+                        powerMotors(0,0,0,0);
+                        maneuver.status = MoveStatus.COMPLETE;
+                    }
+                    else {
+                        // Encoder based movement, check to see if  the encoders are close enough
+                        // to complete the action.   NOTE:  This is required due to the weight and
+                        // inertia of the robots.   They rarely will perfectly hit the specified
+                        // target position.
+                        if (par.driveType == DriveType.TANK) {
+                            if ((Math.abs(maneuver.rightTarget  - par.frontRight.getCurrentPosition()) < par.encoderTolerance)  &&
+                                (Math.abs(maneuver.leftTarget  - par.frontLeft.getCurrentPosition()) < par.encoderTolerance)) {
+                                powerMotors(0,0,0,0);
+                                maneuver.status = MoveStatus.COMPLETE;
+                            }
+                        }
+                        else {
+                            if ((Math.abs(maneuver.rightTarget  - par.frontRight.getCurrentPosition()) < par.encoderTolerance)  &&
+                                (Math.abs(maneuver.leftTarget  - par.frontLeft.getCurrentPosition()) < par.encoderTolerance)    &&
+                                (Math.abs(maneuver.rearRightTarget  - par.rearRight.getCurrentPosition()) < par.encoderTolerance) &&
+                                (Math.abs(maneuver.rearLeftTarget  - par.rearLeft.getCurrentPosition()) < par.encoderTolerance)) {
+                                powerMotors(0,0,0,0);
+                                maneuver.status = MoveStatus.COMPLETE;
+                            }
+                        }
+                    }
+                    break;
+                }
+                case COMPLETE:
+                default:
+                    powerMotors (0.0, 0.0, 0.0, 0.0);
+                    break;
+
             }
 
-        }
-    }
-
-    /***********************************************************
-     **          calculate necessary turn amount              **
-     **********************************************************/
-    public static int getNeededTurn(int isNow, int want, int cw) {
-        cw = (cw < 0) ? -1 : 1;
-        int transit = (((isNow > want) && (cw > 0)) ||
-                ((isNow < want) && (cw < 0))) ?  360 : 0;
-        int neededTurn = Math.abs(transit + (cw*want) + ((-1*cw)*isNow));
-        neededTurn = (neededTurn > 360) ? neededTurn - 360 : neededTurn;
-        return (neededTurn);
-    }
-
-
-
-    public void update() {
-        if  (SystemClock.elapsedRealtime()>driveStopTime) {
-            for(DcMotor dcm : leftMotors) {
-                dcm.setPower(0.0);
+            if (par.debug == true) {
+                par.opMode.telemetry.clearAll();
+                par.opMode.telemetry.addData("Current Heading    ", getHeading());
+                par.opMode.telemetry.addData("Target Heading     ", maneuver.angleTarget);
+                par.opMode.telemetry.addData("Angle Remaining    ", turnRemaining());
+                par.opMode.telemetry.addData("Angle Tolerance    ", par.pivotTolerance.ordinal());
+                par.opMode.telemetry.addData("Rigt Front Ecnoder ", par.frontRight.getCurrentPosition());
+                par.opMode.telemetry.addData("Right Front Target ", maneuver.rightTarget);
+                par.opMode.telemetry.addData("Right Front Motor  ", maneuver.rfPower);
+                //par.opMode.telemetry.addData("Left Front Motor   ", maneuver.lfPower);
+                //par.opMode.telemetry.addData("Right Rear Motor   ", maneuver.rrPower);
+                //par.opMode.telemetry.addData("Left Rear Motor    ", maneuver.lrPower);
             }
-            for(DcMotor dcm : rightMotors) {
-                dcm.setPower(0.0);
-            }
-            motorsStopped = true;
         }
-    }
-
-
-    public boolean motorsRunning () {
-        return (!motorsStopped);
-    }
-
-    public void allStop(){
-        for(DcMotor dcm : leftMotors) {
-            dcm.setPower(0.0);
-        }
-        for(DcMotor dcm : rightMotors) {
-            dcm.setPower(0.0);
-        }
-        motorsStopped = true;
-    }
-
-    public void setParams(double wheelCirc, double wheelRPM, double turnPerSecond,
-                          double fastPower, double slowPower, double correctionPower,
-                          double rightSign, double leftSign, GyroSensor gyro,
-                          LinearOpMode operationMode) {
-        WHEEL_CIRC = wheelCirc;
-        WHEEL_RPM = wheelRPM;
-        TURN_PER_SECOND = turnPerSecond;
-        FAST_POWER          = fastPower;
-        SLOW_POWER          = slowPower;
-        CORRECTION_POWER    = correctionPower;
-        RIGHT_SIGN          = rightSign;
-        LEFT_SIGN           = leftSign;
-        driveGyro           = gyro;
-        myMode = operationMode;
 
 
     }
-
-
-    private double rangeCheck(double distance) {
-        if (distance < MIN_DRIVE_DISTANCE)
-            return 0;
-        if (distance > MAX_DRIVE_DISTANCE)
-            return MAX_DRIVE_DISTANCE;
-        return distance;
-    }
-
-    private long moveTime(double distance, double rpm, double circumferance) {
-        return (long)(distance / (rpm * circumferance) * 1000);
-    }
-
-    private long turnTime(double degrees) {
-        return (long)((degrees / TURN_PER_SECOND) *1000);
-    }
-
 
 
 }
