@@ -109,7 +109,7 @@ public class JK_DriverOpMode extends LinearOpMode {
         /*
          * The init() method of the hardware class does all the work here
          */
-        robot.init(hardwareMap);
+        robot.init(hardwareMap, false);
 
         // Send telemetry message to signify robot waiting;
         telemetry.addData("Status", "Resetting Encoders");    //
@@ -174,24 +174,7 @@ public class JK_DriverOpMode extends LinearOpMode {
         double maxFlipPos         = robot.FlipServo.MAX_POSITION;
         double minFlipPos         = robot.FlipServo.MIN_POSITION;
 
-        //Calculate the accelerometer offsets?
-        BNO055IMU.Parameters parameters = new BNO055IMU.Parameters();
-        BNO055IMU.CalibrationData cal   = new BNO055IMU.CalibrationData();
-        BNO055IMU.CalibrationStatus stat= new BNO055IMU.CalibrationStatus(0);
-        boolean isCalibrated           = false;
-        parameters.mode                 = BNO055IMU.SensorMode.IMU;
-        parameters.angleUnit            = BNO055IMU.AngleUnit.DEGREES;
-        parameters.accelUnit            = BNO055IMU.AccelUnit.METERS_PERSEC_PERSEC;
-        parameters.loggingEnabled       = false;
 
-
-
-        robot.imu.initialize(parameters);
-        int i =0;
-        while (i<10 && !robot.imu.isSystemCalibrated()) {
-            SystemClock.sleep(50);
-            i++;
-        }
 
 
 
@@ -234,7 +217,7 @@ public class JK_DriverOpMode extends LinearOpMode {
                 LastSensor = CurrentTime;
 
                 //Is Intrinsic reference correct?   may want extrinsic.
-                robot.lastAngles = robot.imu.getAngularOrientation(AxesReference.INTRINSIC, AxesOrder.XYZ, AngleUnit.DEGREES);
+                //robot.lastAngles = robot.imu.getAngularOrientation(AxesReference.INTRINSIC, AxesOrder.XYZ, AngleUnit.DEGREES);
 
                 //waitForStart();
 
@@ -274,10 +257,10 @@ public class JK_DriverOpMode extends LinearOpMode {
                     //add debounce if spurious button push would cause bad
                     //performance.
 
-                    g1_LeftX = gamepad1.left_stick_x;
-                    g1_LeftY = gamepad1.left_stick_y;
-                    g1_RightX = gamepad1.right_stick_x;
-                    g1_RightY = gamepad1.right_stick_y;
+                    g1_LeftX = gamepad1.right_stick_x;
+                    g1_LeftY = gamepad1.right_stick_y;
+                    g1_RightX = gamepad1.left_stick_x;
+                    g1_RightY = gamepad1.left_stick_y;
                     g1_A = gamepad1.a;
                     g1_B = gamepad1.b;
                     g1_X = gamepad1.x;
@@ -339,14 +322,18 @@ public class JK_DriverOpMode extends LinearOpMode {
                         // the 0,0 point.  Switching to single stick operation ought to be pretty
                         // straightforward, if that's desired.  Using 2 sticks was simpler to
                         // code up in a hurry.
-                        g1_LeftY = -1 * g1_LeftY * g1_LeftY * g1_LeftY;
-                        g1_RightY = -1 * g1_RightY * g1_RightY * g1_RightY;
+                        g1_LeftY =  g1_LeftY * g1_LeftY * g1_LeftY;
+                        g1_RightY = g1_RightY * g1_RightY * g1_RightY;
+
+                        //Have controller 2 be the reverse of controller 1
+                        g2_LeftY = -1 * g2_LeftY * g2_LeftY * g2_LeftY;
+                        g2_RightY = -1 * g2_RightY * g2_RightY * g2_RightY;
 
                         // The ONLY place we set the motor power variables. Set them here, and
                         // we will never have to worry about which set is clobbering the other.
                         // I aligned them this way to make it REALLY clear what's going on.
-                        leftDriveCmd = Range.clip(g1_LeftY, driveMin, driveMax);
-                        rightDriveCmd = Range.clip(g1_RightY, driveMin, driveMax);
+                        leftDriveCmd = Range.clip(g1_LeftY + g2_LeftY, driveMin, driveMax);
+                        rightDriveCmd = Range.clip(g1_RightY + g2_RightY, driveMin, driveMax);
 
 
                         // Mapping for COlor Sensing Paddle and the Arm
@@ -462,7 +449,7 @@ public class JK_DriverOpMode extends LinearOpMode {
                     if (CurrentTime - LastTelemetry > TELEMETRYPERIOD) {
                         LastTelemetry = CurrentTime;
                         telemetry.addData("Orientation", robot.lastAngles);
-                        telemetry.addData("calib", robot.imu.getCalibrationStatus().toString());
+                        //telemetry.addData("calib", robot.imu.getCalibrationStatus().toString());
                         telemetry.addData("Left Motor Power:       ", leftDriveCmd);
                         telemetry.addData("Right Motor Power:      ", rightDriveCmd);
                         telemetry.addData("Paddle Servo ", robot.PaddleServo.getPower());

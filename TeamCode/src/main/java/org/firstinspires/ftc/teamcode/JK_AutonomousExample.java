@@ -17,7 +17,7 @@ package org.firstinspires.ftc.teamcode;
         import com.qualcomm.robotcore.util.ElapsedTime;
 
 
-@Autonomous(name="JK Autonomous Example", group="Pushbot")
+//@Autonomous(name="JK Autonomous Example", group="Pushbot")
 @SuppressWarnings("WeakerAccess")
 public class JK_AutonomousExample extends LinearOpMode {
 

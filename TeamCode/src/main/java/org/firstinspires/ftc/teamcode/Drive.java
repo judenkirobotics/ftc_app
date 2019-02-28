@@ -81,8 +81,13 @@ PARAMETERS:
 
 STILL TO DO:
     Add drift correction to FORWARD and REVERSE
-    Verify Mecanum works for FORWARD, REVERSE, PIVOTLEFT, and PIVOTRIGHT
-    Debug  CRABLEFT and CRABRIGHT
+    Verify Mecanum works for FORWARD, REVERSE, PIVOTLEFT, and PIVOTRIGHT.  Looks like Mecanum will
+         need to potentially have each wheel shutoff independently from the others.  Have started to
+         do this with the encoderConfiguration routines and seperate driverMode support file.
+    Debug  CRABLEFT and CRABRIGHT....  May need to add individual scalars to be applied when moving
+         both to the LEFT and the RIGHT.  Perhaps apply these scalars in the encoder modification
+         section of the code.   Drivetrain resistance, variable wheel slip, and robot weight
+         distribution all have a greater impact on crabbing.
     Add multi motor support for tank drive??  Afe to do this??
     Maybe eliminate some of the tank/mecanum checks.   Could just double set motors a lot of the
         time with no negative results.  Code is slightly less efficient but could condense it
@@ -96,6 +101,8 @@ STILL TO DO:
 package org.firstinspires.ftc.teamcode;
 
 
+
+import android.os.Environment;
 
 import com.qualcomm.hardware.bosch.BNO055IMU;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
@@ -114,6 +121,16 @@ import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
 import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
 import org.firstinspires.ftc.robotcore.external.navigation.Orientation;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintStream;
 
 
 public class Drive {
@@ -149,6 +166,18 @@ public class Drive {
         public double         minTurnPower   = 0.3;
         public LinearOpMode   opMode         = null;
         public boolean        debug          = false;
+        public boolean        useEncoderRatio= false;
+    }
+
+    public class EncoderRatios {
+        double frontRightForwardRatio=1;
+        double frontLeftForwardRatio =1;
+        double rearRightForwardRatio =1;
+        double rearLeftForwardRatio  =1;
+        double frontRightReverseRatio=1;
+        double frontLeftReverseRatio =1;
+        double rearRightReverseRatio =1;
+        double rearLeftReverseRatio  =1;
     }
 
     private class Maneuver {
@@ -164,15 +193,20 @@ public class Drive {
         private double    lfPower;
         private double    rrPower;
         private double    lrPower;
+        private boolean   rightTargetHit;
+        private boolean   leftTargetHit;
+        private boolean   rightRearTargetHit;
+        private boolean   leftRearTargetHit;
     }
 
-    private boolean     dConfigured       = false;
-    private boolean     backoffStarted    = false;
-    private Parameters  par               = new Parameters();
-    private Maneuver    maneuver          = new Maneuver();
-    private double      circumference     = 0;
-    private double      driveRatio        = 0;
-    private double      crabRatio         = 0;
+    private boolean       dConfigured       = false;
+    private boolean       backoffStarted    = false;
+    private Parameters    par               = new Parameters();
+    private Maneuver      maneuver          = new Maneuver();
+    private EncoderRatios encoderRatios     = new EncoderRatios();
+    private double        circumference     = 0;
+    private double        driveRatio        = 0;
+    private double        crabRatio         = 0;
 
 
 
@@ -188,7 +222,7 @@ public class Drive {
     //
     // Perform some basic sanity checking on the calibration data.
     //
-    public boolean configureDrive (Parameters parameters)
+    public boolean configureDrive (Drive.Parameters parameters)
     {
         dConfigured = true;
 
@@ -216,7 +250,10 @@ public class Drive {
         par.debug         = parameters.debug;
         circumference     = Math.PI * par.wheelDiameter;
         driveRatio        = par.motorRatio * par.gearRatio;
-        crabRatio         = driveRatio * (par.mecanumAngle / 100);
+        //Calculate the crab ratio.   NOTE: mecanum Angle must be in range of 0 to 90
+        crabRatio         = driveRatio / ((90-par.mecanumAngle)/90);   //FIX ME
+
+
 
 
         //Verify linearOpMode first to prevent crashes
@@ -274,7 +311,7 @@ public class Drive {
             par.opMode.telemetry.addData("           encoderTolerance set to   ", (int)parameters.motorRatio/2);
             par.encoderTolerance = (int)parameters.motorRatio/2;
         }
-        if ((parameters.driveType == DriveType.MECANUM) && (parameters.mecanumAngle <=0) && (parameters.mecanumAngle > 90)) {
+        if ((parameters.driveType == DriveType.MECANUM) && ((parameters.mecanumAngle <=0) || (parameters.mecanumAngle > 90))) {
             par.opMode.telemetry.addData("Invalid mecanum angle    ", parameters.mecanumAngle);
             dConfigured = false;
         }
@@ -286,6 +323,13 @@ public class Drive {
         if (par.minTurnPower < 0.3) {
             par.opMode.telemetry.addData("Warning minimum turn power may be low", par.minTurnPower);
         }
+
+
+        //Load Encoder Configuration file
+        if (parameters.useEncoderRatio == true) {
+            loadEncoderData();
+        }
+
 
         //Initialize maneuver to complete
         maneuver.status = MoveStatus.AVAILABLE;
@@ -311,6 +355,12 @@ public class Drive {
         return (int)(Math.abs(distance) / circumference * ratio);
     }
 
+    private void modifyEncoderTarget() {
+        maneuver.rightTarget     = (maneuver.rightTarget > 0)     ? (int)(maneuver.rightTarget     * encoderRatios.frontRightForwardRatio) : (int)(maneuver.rightTarget     * encoderRatios.frontRightReverseRatio);
+        maneuver.leftTarget      = (maneuver.rightTarget > 0)     ? (int)(maneuver.leftTarget      * encoderRatios.frontLeftForwardRatio)  : (int)(maneuver.leftTarget      * encoderRatios.frontLeftReverseRatio);
+        maneuver.rearRightTarget = (maneuver.rearRightTarget > 0) ? (int)(maneuver.rearRightTarget * encoderRatios.rearRightForwardRatio)  : (int)(maneuver.rearRightTarget * encoderRatios.rearRightReverseRatio);
+        maneuver.rearLeftTarget  = (maneuver.rearLeftTarget > 0)  ? (int)(maneuver.rearLeftTarget  * encoderRatios.rearLeftForwardRatio)   : (int)(maneuver.rearLeftTarget  * encoderRatios.rearLeftReverseRatio);
+    }
 
     //Configure the motors to run with or without the encoders depending on the maneuver.
     //If the maneuver requires the encoder set the encoder.
@@ -324,6 +374,10 @@ public class Drive {
         par.frontLeft.setDirection(par.flPolarity);
         par.rearRight.setDirection(par.rrPolarity);
         par.rearLeft.setDirection(par.rlPolarity);
+
+        if (par.useEncoderRatio = true) {
+            modifyEncoderTarget();
+        }
 
         if ((maneuver.type == MoveType.PIVOTLEFT) || (maneuver.type == MoveType.PIVOTRIGHT)) {
             par.frontRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
@@ -340,31 +394,13 @@ public class Drive {
             par.frontLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
             par.frontLeft.setMode(DcMotor.RunMode.RUN_TO_POSITION);
             par.frontLeft.setTargetPosition(maneuver.leftTarget);
-
-
             if (par.driveType == DriveType.MECANUM) {
                 par.rearRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-                par.rearLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
                 par.rearRight.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+                par.rearRight.setTargetPosition(maneuver.rearRightTarget);
+                par.rearLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
                 par.rearLeft.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-                if (maneuver.type == MoveType.CRABLEFT) {
-                    par.frontRight.setTargetPosition(-1* maneuver.rightTarget);
-                    par.frontLeft.setTargetPosition(maneuver.leftTarget);
-                    par.rearRight.setTargetPosition(maneuver.rearRightTarget);
-                    par.rearLeft.setTargetPosition(-1* maneuver.rearLeftTarget);
-                }
-                else if (maneuver.type == MoveType.CRABRIGHT) {
-                    par.frontRight.setTargetPosition(maneuver.rightTarget);
-                    par.frontLeft.setTargetPosition(-1* maneuver.leftTarget);
-                    par.rearRight.setTargetPosition(-1* maneuver.rearRightTarget);
-                    par.rearLeft.setTargetPosition(maneuver.rearLeftTarget);
-                }
-                else {  // FORWARD, REVERSE
-                    par.frontRight.setTargetPosition(maneuver.rightTarget);
-                    par.frontLeft.setTargetPosition(maneuver.leftTarget);
-                    par.rearRight.setTargetPosition(maneuver.rearRightTarget);
-                    par.rearLeft.setTargetPosition(maneuver.rearLeftTarget);
-                }
+                par.rearLeft.setTargetPosition(maneuver.rearLeftTarget);
             }
 
         }
@@ -463,7 +499,11 @@ public class Drive {
         if (startPower < par.minStartPower) {
             power = par.minStartPower;
         }
-        maneuver.type = mType;
+        maneuver.type               = mType;
+        maneuver.rightTargetHit     = false;
+        maneuver.leftTargetHit      = false;
+        maneuver.rightRearTargetHit = false;
+        maneuver.leftRearTargetHit  = false;
 
         //Calculate encoder counts
         switch (mType) {
@@ -471,6 +511,9 @@ public class Drive {
             case CRABRIGHT:
             {
                 maneuver.rightTarget = encoderCounts(val*direction, mType);
+                par.opMode.telemetry.addData("counts", maneuver.rightTarget);
+                par.opMode.telemetry.update();
+                par.opMode.sleep(5000);
                 if (mType == MoveType.CRABLEFT) {
                     maneuver.rightTarget = maneuver.rightTarget * -1;
                 }
@@ -650,6 +693,7 @@ public class Drive {
                                 maneuver.status = MoveStatus.INITIATED;
                                 maneuver.initialPower = par.minTurnPower;
                             }
+
                         }
                     }
                     else if (maneuver.type == MoveType.STOP) {
@@ -669,13 +713,36 @@ public class Drive {
                             }
                         }
                         else {
-                            if ((Math.abs(maneuver.rightTarget  - par.frontRight.getCurrentPosition()) < par.encoderTolerance)  &&
-                                (Math.abs(maneuver.leftTarget  - par.frontLeft.getCurrentPosition()) < par.encoderTolerance)    &&
-                                (Math.abs(maneuver.rearRightTarget  - par.rearRight.getCurrentPosition()) < par.encoderTolerance) &&
-                                (Math.abs(maneuver.rearLeftTarget  - par.rearLeft.getCurrentPosition()) < par.encoderTolerance)) {
+                            //Mecanum can be a bit tricky.   Depending on chassis design some wheels
+                            //may spin a bit more freely than others.   This is not ideal and should
+                            //be fixed mechanically.  However it is still important for the software
+                            //to provide a bit of protection against this.   Instead of waiting for
+                            //all to reach the tolerance count to cut power power should be cut to
+                            //each wheel as it hits its target.
+                            if (Math.abs(maneuver.rightTarget  - par.frontRight.getCurrentPosition()) < par.encoderTolerance) {
+                               maneuver.rightTargetHit = true;
+                               powerMotors(0, maneuver.lfPower, maneuver.rrPower, maneuver.lrPower);
+                            }
+                            if (Math.abs(maneuver.leftTarget  - par.frontLeft.getCurrentPosition()) < par.encoderTolerance) {
+                                maneuver.leftTargetHit = true;
+                                powerMotors(maneuver.rfPower, 0, maneuver.rrPower, maneuver.lrPower);
+                            }
+                            if (Math.abs(maneuver.rearRightTarget  - par.rearRight.getCurrentPosition()) < par.encoderTolerance) {
+                                maneuver.rightRearTargetHit = true;
+                                powerMotors(maneuver.rfPower, maneuver.lfPower, 0, maneuver.lrPower);
+                            }
+                            if (Math.abs(maneuver.rearLeftTarget  - par.rearLeft.getCurrentPosition()) < par.encoderTolerance) {
+                                maneuver.leftRearTargetHit = true;
+                                powerMotors(maneuver.rfPower, maneuver.lfPower, maneuver.rrPower, 0);
+                            }
+                            if (maneuver.rightTargetHit     &&
+                                maneuver.rightRearTargetHit &&
+                                maneuver.leftTargetHit      &&
+                                maneuver.leftRearTargetHit) {
                                 powerMotors(0,0,0,0);
                                 maneuver.status = MoveStatus.COMPLETE;
                             }
+
                         }
                     }
                     break;
@@ -693,9 +760,21 @@ public class Drive {
                 par.opMode.telemetry.addData("Target Heading     ", maneuver.angleTarget);
                 par.opMode.telemetry.addData("Angle Remaining    ", turnRemaining());
                 par.opMode.telemetry.addData("Angle Tolerance    ", par.pivotTolerance.ordinal());
-                par.opMode.telemetry.addData("Rigt Front Ecnoder ", par.frontRight.getCurrentPosition());
                 par.opMode.telemetry.addData("Right Front Target ", maneuver.rightTarget);
+                par.opMode.telemetry.addData("Right Front Encoder ", par.frontRight.getCurrentPosition());
                 par.opMode.telemetry.addData("Right Front Motor  ", maneuver.rfPower);
+                par.opMode.telemetry.addData("Left Front Target ", maneuver.leftTarget);
+                par.opMode.telemetry.addData("Left Front Encoder ", par.frontLeft.getCurrentPosition());
+                par.opMode.telemetry.addData("Left Front Motor  ", maneuver.lfPower);
+                if (par.driveType == DriveType.MECANUM) {
+                    par.opMode.telemetry.addData("Right Rear Target ", maneuver.rearRightTarget);
+                    par.opMode.telemetry.addData("Right Rear Encoder ", par.rearRight.getCurrentPosition());
+                    par.opMode.telemetry.addData("Right Rear Motor  ", maneuver.rrPower);
+                    par.opMode.telemetry.addData("Left Rear Target ", maneuver.rearLeftTarget);
+                    par.opMode.telemetry.addData("Left Rear Encoder ", par.rearLeft.getCurrentPosition());
+                    par.opMode.telemetry.addData("Left Rear Motor  ", maneuver.lrPower);
+                }
+
                 //par.opMode.telemetry.addData("Left Front Motor   ", maneuver.lfPower);
                 //par.opMode.telemetry.addData("Right Rear Motor   ", maneuver.rrPower);
                 //par.opMode.telemetry.addData("Left Rear Motor    ", maneuver.lrPower);
@@ -704,6 +783,231 @@ public class Drive {
 
 
     }
+
+
+    // This piece of code will be used to calibrate multipliers for the different motor encoders.
+    // This will help compensate for motors with damaged encoders that miss a few counts.
+    int CAL_ENCODE_MAX = 5;
+    public void calibrateEncoders() {
+        int rightForward      =0;
+        int leftForward       =0;
+        int rightRearForward  =0;
+        int leftRearForward   =0;
+        int rightReverse      =0;
+        int leftReverse       =0;
+        int rightRearReverse  =0;
+        int leftRearReverse   =0;
+        int i=0;
+        double frontRightForwardRatio=0;
+        double frontLeftForwardRatio =0;
+        double rearRightForwardRatio =0;
+        double rearLeftForwardRatio  =0;
+        double frontRightReverseRatio=0;
+        double frontLeftReverseRatio =0;
+        double rearRightReverseRatio =0;
+        double rearLeftReverseRatio  =0;
+
+
+        while (i < CAL_ENCODE_MAX) {
+            par.frontRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            par.frontLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            par.rearRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            par.rearLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            par.frontRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            par.frontLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            par.rearRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            par.rearLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            //Keep power on the low side.  Robot momentum can skew calibration
+            powerMotors(0.9, 0.9, 0.9, 0.9);
+            par.opMode.sleep(1000);
+            powerMotors(0,0,0,0);
+            rightForward     += par.frontRight.getCurrentPosition();
+            leftForward      += par.frontLeft.getCurrentPosition();
+            rightRearForward += par.rearRight.getCurrentPosition();
+            leftRearForward  += par.rearLeft.getCurrentPosition();
+            par.opMode.sleep(1000);
+
+            par.frontRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            par.frontLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            par.rearRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            par.rearLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            par.frontRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            par.frontLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            par.rearRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            par.rearLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            //Keep power on the low side.  Robot momentum can skew calibration
+            powerMotors(-0.9, -0.9, -0.9, -0.9);
+            par.opMode.sleep(1000);
+            powerMotors(0,0,0,0);
+            rightReverse     += par.frontRight.getCurrentPosition();
+            leftReverse      += par.frontLeft.getCurrentPosition();
+            rightRearReverse += par.rearRight.getCurrentPosition();
+            leftRearReverse  += par.rearLeft.getCurrentPosition();
+
+            par.opMode.telemetry.clear();
+            par.opMode.telemetry.addData("RIGHT FORWARD        ", rightForward);
+            par.opMode.telemetry.addData("LEFT FORWARD         ", leftForward);
+            par.opMode.telemetry.addData("RIGHT REAR FORWARD   ", rightRearForward);
+            par.opMode.telemetry.addData("LEFT REAR FORWARD    ", leftRearForward);
+            par.opMode.telemetry.addData("RIGHT REVERSE        ", rightReverse);
+            par.opMode.telemetry.addData("LEFT REVERSE         ", leftReverse);
+            par.opMode.telemetry.addData("RIGHT REAR REVERSE   ", rightRearReverse);
+            par.opMode.telemetry.addData("LEFT REAR REVERSE    ", leftRearReverse);
+            par.opMode.telemetry.update();
+            par.opMode.sleep(3000);
+            i++;
+        }
+
+        //Take the sampled data and figure out the multipliers to "equalize" the motor encoders.
+        //Always use the front right motor as the baseline.
+        encoderRatios.frontRightForwardRatio = (double)rightForward / (double)rightForward;
+        encoderRatios.frontRightReverseRatio = (double)rightReverse / (double)rightReverse;
+        encoderRatios.frontLeftForwardRatio  = (double)leftForward / (double)rightForward;
+        encoderRatios.frontLeftReverseRatio  = (double)leftReverse / (double)rightReverse;
+        encoderRatios.rearRightForwardRatio  = (double)rightRearForward / (double)rightForward;
+        encoderRatios.rearRightReverseRatio  = (double)rightRearReverse / (double)rightReverse;
+        encoderRatios.rearLeftForwardRatio   = (double)leftRearForward / (double)rightForward;
+        encoderRatios.rearLeftReverseRatio   = (double)leftRearReverse / (double)rightReverse;
+
+        par.opMode.telemetry.clear();
+        par.opMode.telemetry.addData("RIGHT FORWARD RATIO        ", encoderRatios.frontRightForwardRatio);
+        par.opMode.telemetry.addData("LEFT FORWARD RATIO         ", encoderRatios.frontLeftForwardRatio);
+        par.opMode.telemetry.addData("RIGHT REAR FORWARD RATIO   ", encoderRatios.rearRightForwardRatio);
+        par.opMode.telemetry.addData("LEFT REAR FORWARD RATIO    ", encoderRatios.rearLeftForwardRatio);
+        par.opMode.telemetry.addData("RIGHT REVERSE RATIO        ", encoderRatios.frontRightReverseRatio);
+        par.opMode.telemetry.addData("LEFT REVERSE RATIO         ", encoderRatios.frontLeftReverseRatio);
+        par.opMode.telemetry.addData("RIGHT REAR REVERSE RATIO   ", encoderRatios.rearRightReverseRatio);
+        par.opMode.telemetry.addData("LEFT REAR REVERSE RATIO    ", encoderRatios.rearLeftReverseRatio);
+        par.opMode.telemetry.update();
+        par.opMode.sleep(3000);
+    }
+
+
+    private String configurationFileName () {
+        String directoryPath = Environment.getExternalStorageDirectory().getPath();
+        String filePath = directoryPath + "/FIRST";
+        String fileName = filePath + "/encoderConfiguration.txt";
+        return fileName;
+    }
+
+    public void displayEncoderConfiguration() {
+        par.opMode.telemetry.addData("Front Right Forward Ratio  ", encoderRatios.frontRightForwardRatio);
+        par.opMode.telemetry.addData("Front Left Forward Ratio  ", encoderRatios.frontLeftForwardRatio);
+        par.opMode.telemetry.addData("Rear Right Forward Ratio  ", encoderRatios.rearRightForwardRatio);
+        par.opMode.telemetry.addData("Rear Left Forward Ratio  ", encoderRatios.rearLeftForwardRatio);
+        par.opMode.telemetry.addData("Front Right Reverse Ratio  ", encoderRatios.frontRightReverseRatio);
+        par.opMode.telemetry.addData("Front Left Reverse Ratio  ", encoderRatios.frontLeftReverseRatio);
+        par.opMode.telemetry.addData("Rear Right Reverse Ratio  ", encoderRatios.rearRightReverseRatio);
+        par.opMode.telemetry.addData("Rear Left Reverse Ratio  ", encoderRatios.rearLeftReverseRatio);
+        par.opMode.telemetry.update();
+        par.opMode.sleep(3000);
+    }
+
+    public void saveEncoderData() {
+        File file = new File (configurationFileName());
+
+        par.opMode.telemetry.clear();
+        par.opMode.telemetry.addData("Saving Encoder Configuration", configurationFileName());
+        try {
+            FileOutputStream fileoutput = new FileOutputStream(file);
+            PrintStream ps = new PrintStream(fileoutput);
+            ps.println(encoderRatios.frontRightForwardRatio);
+            ps.println(encoderRatios.frontLeftForwardRatio);
+            ps.println(encoderRatios.rearRightForwardRatio);
+            ps.println(encoderRatios.rearLeftForwardRatio);
+            ps.println(encoderRatios.frontRightReverseRatio);
+            ps.println(encoderRatios.frontLeftReverseRatio);
+            ps.println(encoderRatios.rearRightReverseRatio);
+            ps.println(encoderRatios.rearLeftReverseRatio);
+            ps.close();
+            fileoutput.close();
+        }
+        catch (FileNotFoundException exception) {
+            par.opMode.telemetry.addData("Unable to create: ", configurationFileName());
+            par.opMode.telemetry.addLine("Encoder Calibration Data Not Saved");
+        }
+        catch (IOException exception) {
+            par.opMode.telemetry.addData("Unable to save/close: ", configurationFileName());
+            par.opMode.telemetry.addLine("Encoder Calibration Data Not Saved");
+        }
+
+        par.opMode.telemetry.addLine("Complete");
+
+
+
+    }
+    public void loadEncoderData() {
+        File file = new File (configurationFileName());
+
+        par.opMode.telemetry.clear();
+        par.opMode.telemetry.addData("Loading Encoder Configuration", configurationFileName());
+        try {
+            FileInputStream fileinput = new FileInputStream(file);
+            BufferedReader  br = new BufferedReader(new InputStreamReader(fileinput));
+            String line = null;
+            int i=0;
+
+            while ((line = br.readLine()) != null) {
+                switch (i) {
+                    case 0:
+                        encoderRatios.frontRightForwardRatio = Double.valueOf(line);
+                        break;
+                    case 1:
+                        encoderRatios.frontLeftForwardRatio = Double.valueOf(line);
+                        break;
+                    case 2:
+                        encoderRatios.rearRightForwardRatio = Double.valueOf(line);
+                        break;
+                    case 3:
+                        encoderRatios.rearLeftForwardRatio = Double.valueOf(line);
+                        break;
+                    case 4:
+                        encoderRatios.frontRightReverseRatio = Double.valueOf(line);
+                        break;
+                    case 5:
+                        encoderRatios.frontLeftReverseRatio  = Double.valueOf(line);
+                        break;
+                    case 6:
+                        encoderRatios.rearRightReverseRatio = Double.valueOf(line);
+                        break;
+                    case 7:
+                        encoderRatios.rearLeftReverseRatio  = Double.valueOf(line);
+                        break;
+                    default:
+                        par.opMode.telemetry.addData("Too much data... Maybe Corrupted", i);
+                        break;
+                }
+                i++;
+            }
+            br.close();
+        }
+        catch (FileNotFoundException exception) {
+            par.opMode.telemetry.addData("Unable to open: ", configurationFileName());
+            par.opMode.telemetry.addLine("Encoder Calibration Data Not Saved");
+        }
+        catch (IOException exception) {
+            par.opMode.telemetry.addData("Unable to close: ", configurationFileName());
+            par.opMode.telemetry.addLine("Encoder Calibration Data Not Saved");
+        }
+
+        displayEncoderConfiguration();
+        par.opMode.telemetry.addLine("Complete");
+        par.opMode.telemetry.update();
+        par.opMode.sleep(2000);
+
+    }
+
+    public void resetEncoderConfiguration() {
+        encoderRatios.frontRightForwardRatio = 1.0;
+        encoderRatios.frontLeftForwardRatio = 1.0;
+        encoderRatios.rearRightForwardRatio = 1.0;
+        encoderRatios.rearLeftForwardRatio = 1.0;
+        encoderRatios.frontRightReverseRatio = 1.0;
+        encoderRatios.frontLeftReverseRatio  = 1.0;
+        encoderRatios.rearRightReverseRatio = 1.0;
+        encoderRatios.rearLeftReverseRatio  = 1.0;
+    }
+
 
 
 }

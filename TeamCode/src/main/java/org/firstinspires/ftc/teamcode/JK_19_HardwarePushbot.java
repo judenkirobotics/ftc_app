@@ -103,7 +103,7 @@ public class JK_19_HardwarePushbot
     }
 
     /* Initialize standard Hardware interfaces */
-    public void init(HardwareMap ahwMap) {
+    public void init(HardwareMap ahwMap, boolean useGyro) {
         // Save reference to Hardware map
         hwMap = ahwMap;
 
@@ -143,24 +143,29 @@ public class JK_19_HardwarePushbot
         PaddleServo.setDirection(DcMotorSimple.Direction.FORWARD);
         PaddleServo.setPower(0);
         FlipServo.setDirection(Servo.Direction.FORWARD);
-        FlipServo.setPosition(1.0);        LiftMotor.setPower(0);
+        FlipServo.setPosition(1.0);
+        LiftMotor.setPower(0);
         LiftMotor.setDirection(DcMotorSimple.Direction.REVERSE);
         LiftMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         LiftMotor.setTargetPosition(0);
 
         //IMU Test
-        BNO055IMU.Parameters parameters = new BNO055IMU.Parameters();
-        parameters.mode                  = BNO055IMU.SensorMode.IMU;
-        parameters.angleUnit             = BNO055IMU.AngleUnit.DEGREES;
-        parameters.accelUnit             = BNO055IMU.AccelUnit.METERS_PERSEC_PERSEC;
-        parameters.loggingEnabled        = false;
-        imu = hwMap.get(BNO055IMU.class, "imu");  //Must be device 0 on i2c 0
-        imu.initialize(parameters);
-        int i = 0;
-        while (!imu.isGyroCalibrated() && i<60) {
-            i++;
-            SystemClock.sleep(100);
+
+        if (useGyro) {
+            BNO055IMU.Parameters parameters = new BNO055IMU.Parameters();
+            parameters.mode                  = BNO055IMU.SensorMode.IMU;
+            parameters.angleUnit             = BNO055IMU.AngleUnit.DEGREES;
+            parameters.accelUnit             = BNO055IMU.AccelUnit.METERS_PERSEC_PERSEC;
+            parameters.loggingEnabled        = false;
+            imu = hwMap.get(BNO055IMU.class, "imu");  //Must be device 0 on i2c 0
+            imu.initialize(parameters);
+            int i = 0;
+            while (!imu.isGyroCalibrated() && i<60) {
+                i++;
+                SystemClock.sleep(100);
+            }
         }
+
 
 
 

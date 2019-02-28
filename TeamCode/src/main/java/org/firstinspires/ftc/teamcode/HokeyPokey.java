@@ -43,22 +43,17 @@ public class HokeyPokey extends LinearOpMode {
 
     AutonomousStates runMe = new AutonomousStates();
     AutoCommand cmd[] = {
-
-
-
-
-
             new AutoCommand(AutonomousStates.AutoStates.LOWER, Drive.MoveType.STOP, 0.95,0,0,0, 10000),
            // new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.PIVOTRIGHT, 40, 0.7, 0, 0, 3000),
             new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.FORWARD, 12.5, 0.8, 0,0, 1000),
             //new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.PIVOTLEFT, 2.6, 0.7,0,0, 2000),
-           // new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.FORWARD, 8, 0.8, 0,0, 1000),
-            new AutoCommand(AutonomousStates.AutoStates.SWING, Drive.MoveType.STOP, 0.4,0,0,0,500),
-            new AutoCommand(AutonomousStates.AutoStates.DETECT, Drive.MoveType.STOP, 0,0,0,0, 500),
-            new AutoCommand(AutonomousStates.AutoStates.PADDLE, Drive.MoveType.STOP, 1.0,0,0,0, 1000),
-            new AutoCommand(AutonomousStates.AutoStates.SWING, Drive.MoveType.STOP, 0.6,0,0,0,500),
-            new AutoCommand(AutonomousStates.AutoStates.DETECT, Drive.MoveType.STOP, 0,0,0,0, 500),
-            new AutoCommand(AutonomousStates.AutoStates.PADDLE, Drive.MoveType.STOP, 1.0,0,0,0, 1000),
+            new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.FORWARD, 8, 0.8, 0,0, 1000),
+           // new AutoCommand(AutonomousStates.AutoStates.SWING, Drive.MoveType.STOP, 0.4,0,0,0,500),
+            //new AutoCommand(AutonomousStates.AutoStates.DETECT, Drive.MoveType.STOP, 0,0,0,0, 500),
+            //new AutoCommand(AutonomousStates.AutoStates.PADDLE, Drive.MoveType.STOP, 1.0,0,0,0, 1000),
+            //new AutoCommand(AutonomousStates.AutoStates.SWING, Drive.MoveType.STOP, 0.6,0,0,0,500),
+            //new AutoCommand(AutonomousStates.AutoStates.DETECT, Drive.MoveType.STOP, 0,0,0,0, 500),
+            //new AutoCommand(AutonomousStates.AutoStates.PADDLE, Drive.MoveType.STOP, 1.0,0,0,0, 1000),
             new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.FORWARD, 30, 0.8, 0,0, 1000),
             new AutoCommand(AutonomousStates.AutoStates.SWING, Drive.MoveType.STOP, 0,0,0,0,500),
             new AutoCommand(AutonomousStates.AutoStates.TOKEN, Drive.MoveType.STOP, 0.1, 0, 0,0,1000),

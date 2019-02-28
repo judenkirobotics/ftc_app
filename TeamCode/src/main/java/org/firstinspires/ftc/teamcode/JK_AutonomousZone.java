@@ -35,7 +35,7 @@ import com.qualcomm.robotcore.util.Range;
 //import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 //@Autonomous(name="Pushbot: Auto Drive By Encoder", group="Pushbot")
 
-@Autonomous(name="JK Autonomous Zone Side", group="Pushbot")
+//@Autonomous(name="JK Autonomous Zone Side", group="Pushbot")
 @SuppressWarnings("WeakerAccess")
 //@TeleOp(name = "Time Slice Op Mode", group = "HardwarePushbot")
 //@Disabled
@@ -104,7 +104,7 @@ public class JK_AutonomousZone extends LinearOpMode {
          * Initialize the drive system variables.
          * The init() method of the hardware class does all the work here
          */
-        robot.init(hardwareMap);
+        robot.init(hardwareMap, true);
 
         // Send telemetry message to signify robot waiting;
         telemetry.addData("Status", "Resetting Encoders");    //

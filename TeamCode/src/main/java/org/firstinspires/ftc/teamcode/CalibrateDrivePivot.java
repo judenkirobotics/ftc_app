@@ -43,7 +43,7 @@ public class CalibrateDrivePivot extends LinearOpMode {
         telemetry.addData("Status", "Initializing Hardware");
         telemetry.setAutoClear(false);
         telemetry.update();
-        robot.init(hardwareMap);
+        robot.init(hardwareMap, true);
         telemetry.addData("      ", "SUCCESS");
 
 

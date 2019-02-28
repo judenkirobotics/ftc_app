@@ -87,6 +87,8 @@ package org.firstinspires.ftc.teamcode;
 
 
 
+import android.os.SystemClock;
+
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -101,10 +103,11 @@ public class AutonomousStates {
     //Define Robot Hardware and classes here
     private JK_19_HardwarePushbot robot   = new JK_19_HardwarePushbot();   //Remap to your robot
     private Drive robotDrive              = new Drive();
+    private GoldBlockDetection blockDetection = new GoldBlockDetection();
 
 
     //Define all of the available states for AutoState.   Add new states before PAUSE
-    public enum AutoStates {LOWER, MOVE, SWING, PADDLE, DETECT, TOKEN, PAUSE, WAIT, RAISE}
+    public enum AutoStates {LOWER, DETECTGOLD, MOVE, SWING, PADDLE, DETECT, TOKEN, PAUSE, WAIT, RAISE}
 
 
     //Define AutoState run intervals here
@@ -128,6 +131,7 @@ public class AutonomousStates {
     final double MIN_RED_GREEN = 1.2;
     final double MAX_BLUE_GREEN = 0.65;
     boolean paddleStarted = false;
+    boolean goldHasBeenFound = false;
 
     private int liftCurrent = 0;
     private int liftMotorCounts = 28;
@@ -154,7 +158,7 @@ public class AutonomousStates {
         opMode.telemetry.addData("Status", "Configuring Hardware...");
         opMode.telemetry.setAutoClear(false);
         opMode.telemetry.update();
-        robot.init(hardwareMap);
+        robot.init(hardwareMap, true);
         if (robot.imu.isGyroCalibrated()) {
             opMode.telemetry.addLine("    Gyro Calibrated");
         }
@@ -163,6 +167,10 @@ public class AutonomousStates {
         }
         opMode.telemetry.addData("      ", "SUCCESS!");
         opMode.telemetry.update();
+
+        opMode.telemetry.addLine("Initializing Vision");
+        opMode.telemetry.update();
+        blockDetection.configureDetection(opMode);
 
 
 
@@ -175,20 +183,25 @@ public class AutonomousStates {
         dParm.frontLeft        = robot.leftDrive;
         dParm.rearRight        = robot.rightDrive;  //Should be unnecessary, but just keep the nulls away
         dParm.rearLeft         = robot.leftDrive;
+        dParm.frPolarity       = DcMotorSimple.Direction.FORWARD;
+        dParm.rrPolarity       = DcMotorSimple.Direction.FORWARD;
+        dParm.flPolarity       = DcMotorSimple.Direction.REVERSE;
+        dParm.rlPolarity       = DcMotorSimple.Direction.REVERSE;
         dParm.driveType        = Drive.DriveType.TANK;
         dParm.imu              = robot.imu;
         dParm.motorRatio       = 28;
         dParm.gearRatio        = 40;
         dParm.wheelDiameter    = 2.5;
         dParm.mecanumAngle     = 1;
-        dParm.pivotTolerance   = Drive.PivotTolerance.TWO_DEGREES;
+        dParm.pivotTolerance   = Drive.PivotTolerance.ONE_DEGREE;
         dParm.encoderTolerance = 75;    //VERY DANGEROUS TO PLAY WITH CAN RESULT IN STUCK STATE
-        dParm.turnBackoff      = 0.45;  // 35 percent backoff
+        dParm.turnBackoff      = 0.45;  // 45 percent backoff
         dParm.backoffMultiplier = 15;    // Make larger for high speed turns.
-        dParm.minStartPower    = 0.3;
-        dParm.minTurnPower     = 0.3;
+        dParm.minStartPower    = 0.45;
+        dParm.minTurnPower     = 0.45;
         dParm.opMode           = opMode;
-        dParm.debug            = true;
+        dParm.debug            = false;
+        dParm.useEncoderRatio  = true;
         if (robotDrive.configureDrive(dParm)) {
             opMode.telemetry.addData("Status   ", "Robot Initialized!");
         }
@@ -274,12 +287,7 @@ public class AutonomousStates {
                     case SWING:
                         // IDEA: disregard following code in SWING and PADDLE. combine swing and detection states. write a "detectGold()" function. construct an array of positions
                         //to detect gold at. if gold is detected, stage_complete. if gold not detected, search next position.
-                        if(isGold){
-                            stage_complete = true; // if gold is detected, don't swing the arm and proceed to next case
-                        }
-                        else {
-                            armPosition = cmd[CurrentAutoState].value1;
-                        }
+                        armPosition = cmd[CurrentAutoState].value1;
                         break;
                     case PADDLE:
                         if(isGold  || paddleStarted) {
@@ -312,8 +320,17 @@ public class AutonomousStates {
                                     (colorSensorB/colorSensorG < MAX_BLUE_GREEN)){
                                 isGold = true; // changes to true only if the if statement is satisfied
                                 stage_complete = true;  // Only complete stage if gold is found, otherwise timeout????
+                                goldHasBeenFound = true;
                             }
                         }
+                        break;
+                    case DETECTGOLD:
+                        GoldBlockDetection.LOCATION location;
+                        location = blockDetection.detectGoldBlock(cmd[CurrentAutoState].timeLimit);
+                        opMode.telemetry.addData("block located ",location );
+                        opMode.telemetry.update();
+                        SystemClock.sleep(5000);
+                        stage_complete = true;
                         break;
                     case TOKEN:
                         robot.FlipServo.setPosition(cmd[CurrentAutoState].value1);
