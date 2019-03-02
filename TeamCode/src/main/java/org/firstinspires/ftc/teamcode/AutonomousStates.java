@@ -202,6 +202,7 @@ public class AutonomousStates {
         dParm.opMode           = opMode;
         dParm.debug            = false;
         dParm.useEncoderRatio  = true;
+        dParm.Block_Location   = GoldBlockDetection.LOCATION.ERROR;
         if (robotDrive.configureDrive(dParm)) {
             opMode.telemetry.addData("Status   ", "Robot Initialized!");
         }
@@ -237,6 +238,8 @@ public class AutonomousStates {
         long LastNav        = CurrentTime + 15;
         long LastMotor      = CurrentTime + 20;
         long LastTelemetry  = CurrentTime + 17;
+
+
         ElapsedTime runtime = new ElapsedTime();
         opMode.waitForStart();
         runtime.reset();
@@ -325,12 +328,14 @@ public class AutonomousStates {
                         }
                         break;
                     case DETECTGOLD:
-                        GoldBlockDetection.LOCATION location;
-                        location = blockDetection.detectGoldBlock(cmd[CurrentAutoState].timeLimit);
-                        opMode.telemetry.addData("block located ",location );
+                        //GoldBlockDetection.LOCATION location;
+                        dParm.Block_Location = blockDetection.detectGoldBlock(cmd[CurrentAutoState].timeLimit);
+                        opMode.telemetry.addData("block located ",dParm.Block_Location );
                         opMode.telemetry.update();
                         SystemClock.sleep(5000);
                         stage_complete = true;
+                        if (dParm.Block_Location == GoldBlockDetection.LOCATION.LEFT)
+
                         break;
                     case TOKEN:
                         robot.FlipServo.setPosition(cmd[CurrentAutoState].value1);

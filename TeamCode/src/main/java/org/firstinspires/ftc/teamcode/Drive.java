@@ -167,6 +167,8 @@ public class Drive {
         public LinearOpMode   opMode         = null;
         public boolean        debug          = false;
         public boolean        useEncoderRatio= false;
+        public GoldBlockDetection.LOCATION Block_Location;
+
     }
 
     public class EncoderRatios {
