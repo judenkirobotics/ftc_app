@@ -107,7 +107,7 @@ public class AutonomousStates {
 
 
     //Define all of the available states for AutoState.   Add new states before PAUSE
-    public enum AutoStates {LOWER, DETECTGOLD, MOVE, SWING, PADDLE, DETECT, TOKEN, PAUSE, WAIT, RAISE}
+    public enum AutoStates {LOWER, DETECTGOLD, PUSHBLOCK, BLOCKPIVOT, BLOCKFORWARD, BLOCKREVERSE ,MOVE, SWING, PADDLE, DETECT, TOKEN, PAUSE, WAIT, RAISE}
 
 
     //Define AutoState run intervals here
@@ -146,6 +146,9 @@ public class AutonomousStates {
     private boolean liftStarted = false;
     private double liftPower = 0.0;
     private int liftTarget = 0;
+
+    double blockHeading = 0.0;
+    double blockDistance = 0.0;
 
 
     public void runOpMode(LinearOpMode opMode, HardwareMap hardwareMap, AutoCommand cmd[]) {
@@ -332,10 +335,68 @@ public class AutonomousStates {
                         dParm.Block_Location = blockDetection.detectGoldBlock(cmd[CurrentAutoState].timeLimit);
                         opMode.telemetry.addData("block located ",dParm.Block_Location );
                         opMode.telemetry.update();
-                        SystemClock.sleep(5000);
                         stage_complete = true;
-                        if (dParm.Block_Location == GoldBlockDetection.LOCATION.LEFT)
+                        break;
+                    case PUSHBLOCK:
+                        switch(dParm.Block_Location) {
+                            case LEFT:
+                                blockHeading = 330;
+                                blockDistance = 15;
+                                break;
+                            case CENTER:
+                                blockHeading = 0;
+                                blockDistance = 13;
+                                break;
+                            case RIGHT:
+                                blockHeading = 30;
+                                blockDistance = 15;
+                                break;
+                            case ERROR:
+                            default:
+                                break;
+                        }
+                        stage_complete = true;
+                        // have robot turn to block heading, move forward block distance, move backwards block distance
+                        break;
+                    case BLOCKPIVOT:
+                        if (robotDrive.getMoveStatus() == Drive.MoveStatus.AVAILABLE) {
+                            Drive.MoveType type = Drive.MoveType.STOP;
+                            if (dParm.Block_Location == GoldBlockDetection.LOCATION.LEFT) {
+                                type = Drive.MoveType.PIVOTLEFT;
+                            }
+                            else if (dParm.Block_Location == GoldBlockDetection.LOCATION.RIGHT) {
+                                type = Drive.MoveType.PIVOTRIGHT;
+                            }
+                            else {
+                                stage_complete = true;
+                            }
+                            if (!stage_complete) {
+                                robotDrive.move(type , blockHeading, 0.5);
+                            }
 
+                        }
+                        if (robotDrive.getMoveStatus() == Drive.MoveStatus.COMPLETE) {
+                            robotDrive.move(Drive.MoveType.STOP, 0, 0);
+                            stage_complete = true;
+                        }
+                        break;
+                    case BLOCKFORWARD:
+                        if (robotDrive.getMoveStatus() == Drive.MoveStatus.AVAILABLE) {
+                            robotDrive.move(Drive.MoveType.FORWARD, blockDistance, 0.5);
+                        }
+                        if (robotDrive.getMoveStatus() == Drive.MoveStatus.COMPLETE) {
+                            robotDrive.move(Drive.MoveType.STOP, 0, 0);
+                            stage_complete = true;
+                        }
+                        break;
+                    case BLOCKREVERSE:
+                        if (robotDrive.getMoveStatus() == Drive.MoveStatus.AVAILABLE) {
+                            robotDrive.move(Drive.MoveType.REVERSE, blockDistance, 0.5);
+                        }
+                        if (robotDrive.getMoveStatus() == Drive.MoveStatus.COMPLETE) {
+                            robotDrive.move(Drive.MoveType.STOP, 0, 0);
+                            stage_complete = true;
+                        }
                         break;
                     case TOKEN:
                         robot.FlipServo.setPosition(cmd[CurrentAutoState].value1);
