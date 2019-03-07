@@ -41,15 +41,22 @@ public class AutoCraterGoldBlock extends LinearOpMode {
     AutonomousStates runMe = new AutonomousStates();
     AutoCommand cmd[] = {
 
+            // GET OFF THE HOOK
             new AutoCommand(AutonomousStates.AutoStates.DETECTGOLD, Drive.MoveType.STOP, 0,0,0,0, 5000),
             new AutoCommand(AutonomousStates.AutoStates.LOWER, Drive.MoveType.STOP, 0.9,0,0,0, 10000),
-            new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.PIVOTRIGHT, 45, 0.8,0,0,1000),
-            new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.FORWARD, 4, 0.8, 0,0, 1000),
+            new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.PIVOTRIGHT, 50, 0.8,0,0,1000),
+            new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.FORWARD, 10, 0.8, 0,0, 1000),
             new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.PIVOTLEFT, 0, 0.8,0,0,2000),
 
-            new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.FORWARD, 20, 0.8, 0,0, 2000),
-            new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.REVERSE, 5, 0.8, 0,0, 2000),
-            new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.PIVOTLEFT, 270, 0.8,0,0,2000),
+            //PUSH THE BLOCK
+            new AutoCommand(AutonomousStates.AutoStates.PUSHBLOCK, Drive.MoveType.STOP,0, 0, 0, 0, 1000),
+            new AutoCommand(AutonomousStates.AutoStates.BLOCKPIVOT, Drive.MoveType.STOP,0, 0, 0, 0, 1000),
+            new AutoCommand(AutonomousStates.AutoStates.BLOCKFORWARD, Drive.MoveType.STOP,0, 0, 5, 0, 2000),
+            new AutoCommand(AutonomousStates.AutoStates.BLOCKREVERSE, Drive.MoveType.STOP,0, 0, 5, 0, 2000),
+
+            //new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.FORWARD, 20, 0.8, 0,0, 2000),
+            //new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.REVERSE, 5, 0.8, 0,0, 2000),
+            new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.PIVOTLEFT, 300, 0.8,0,0,2000),
             new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.FORWARD, 50, 0.8, 0,0, 5000),
             new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.PIVOTLEFT, 225, 0.8,0,0,2000),
             new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.FORWARD, 25, 0.8, 0,0, 5000),
