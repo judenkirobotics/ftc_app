@@ -338,24 +338,21 @@ public class AutonomousStates {
                         stage_complete = true;
                         break;
                     case PUSHBLOCK:
+                        stage_complete = true;
                         switch(dParm.Block_Location) {
                             case LEFT:
-                                blockHeading = 330;
-                                blockDistance = 15;
-                                break;
+                                blockHeading = 326;
+                                blockDistance = 17;
                             case CENTER:
                                 blockHeading = 0;
                                 blockDistance = 13;
-                                break;
                             case RIGHT:
                                 blockHeading = 30;
                                 blockDistance = 20;
-                                break;
                             case ERROR:
                             default:
                                 break;
                         }
-                        stage_complete = true;
                         // have robot turn to block heading, move forward block distance, move backwards block distance
                         break;
                     case BLOCKPIVOT:
