@@ -380,7 +380,7 @@ public class AutonomousStates {
                     case BLOCKFORWARD:
                         if (robotDrive.getMoveStatus() == Drive.MoveStatus.AVAILABLE) {
                             blockDistance += cmd[CurrentAutoState].value3;
-                            robotDrive.move(Drive.MoveType.FORWARD, blockDistance, 0.5);
+                            robotDrive.move(Drive.MoveType.FORWARD, blockDistance, 0.7);
                         }
                         if (robotDrive.getMoveStatus() == Drive.MoveStatus.COMPLETE) {
                             robotDrive.move(Drive.MoveType.STOP, 0, 0);
@@ -390,7 +390,7 @@ public class AutonomousStates {
                     case BLOCKREVERSE:
                         if (robotDrive.getMoveStatus() == Drive.MoveStatus.AVAILABLE) {
                             blockDistance -= cmd[CurrentAutoState].value3;
-                            robotDrive.move(Drive.MoveType.REVERSE, blockDistance, 0.5);
+                            robotDrive.move(Drive.MoveType.REVERSE, blockDistance, 0.7);
                         }
                         if (robotDrive.getMoveStatus() == Drive.MoveStatus.COMPLETE) {
                             robotDrive.move(Drive.MoveType.STOP, 0, 0);

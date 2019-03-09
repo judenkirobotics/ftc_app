@@ -51,8 +51,8 @@ public class AutoCraterGoldBlock extends LinearOpMode {
             //PUSH THE BLOCK
             new AutoCommand(AutonomousStates.AutoStates.PUSHBLOCK, Drive.MoveType.STOP,0, 0, 0, 0, 1000),
             new AutoCommand(AutonomousStates.AutoStates.BLOCKPIVOT, Drive.MoveType.STOP,0, 0, 0, 0, 1000),
-            new AutoCommand(AutonomousStates.AutoStates.BLOCKFORWARD, Drive.MoveType.STOP,0, 0, 5, 0, 2000),
-            new AutoCommand(AutonomousStates.AutoStates.BLOCKREVERSE, Drive.MoveType.STOP,0, 0, 5, 0, 2000),
+            new AutoCommand(AutonomousStates.AutoStates.BLOCKFORWARD, Drive.MoveType.STOP,0, 0, 7, 0, 2000),
+            new AutoCommand(AutonomousStates.AutoStates.BLOCKREVERSE, Drive.MoveType.STOP,0, 0, 7, 0, 2000),
 
             //new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.FORWARD, 20, 0.8, 0,0, 2000),
             //new AutoCommand(AutonomousStates.AutoStates.MOVE, Drive.MoveType.REVERSE, 5, 0.8, 0,0, 2000),
