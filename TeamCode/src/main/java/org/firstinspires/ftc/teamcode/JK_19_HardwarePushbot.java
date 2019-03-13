@@ -78,7 +78,6 @@ public class JK_19_HardwarePushbot
     Orientation        lastAngles            = new Orientation();
     double             globalAngle           = 0.3;
     double             power                 = 0.3;
-
    // public Servo       HookServo           =null;
     //public Servo       arm                 = null;
    // public DcMotor     leftRear            = null;

@@ -55,7 +55,7 @@ import java.util.List;
  */
 //@Disabled
 public class GoldBlockDetection {
-    public  enum LOCATION {LEFT, RIGHT, CENTER, ERROR};
+    public  enum LOCATION {RIGHT, LEFT, CENTER, OLD_RIGHT, OLD_CENTER, ERROR};
     private LinearOpMode myOpMode = null;
     private boolean timeLeft = false;
     private static final String TFOD_MODEL_ASSET = "RoverRuckus.tflite";
@@ -105,6 +105,61 @@ public class GoldBlockDetection {
                     // the last time that call was made.
                     List<Recognition> updatedRecognitions = tfod.getUpdatedRecognitions();
                     if (updatedRecognitions != null) {
+                        myOpMode.telemetry.addData("# Object Detected", updatedRecognitions.size());
+                        if (updatedRecognitions.size() >= 1) {
+                            int goldMineralX = -1;
+                            int silverMineral1X = -1;
+                            int silverMineral2X = -1;
+                            for (Recognition recognition : updatedRecognitions) {
+                                if (recognition.getLabel().equals(LABEL_GOLD_MINERAL)) {
+                                    goldMineralX = (int) recognition.getLeft();
+                                } else if (silverMineral1X == -1) {
+                                    silverMineral1X = (int) recognition.getLeft();
+                                } else {
+                                    silverMineral2X = (int) recognition.getLeft();
+                                }
+                            }
+
+                            if (goldMineralX == -1) {
+                                //myOpMode.telemetry.addData("Gold Mineral Position", "Left");
+                                retVal = LOCATION.LEFT;
+                            }
+                            else {
+                                if (goldMineralX < 300 ) {
+                                    //myOpMode.telemetry.addData("Gold Mineral Position", "Center");
+                                    //myOpMode.telemetry.addData("Gold location",goldMineralX);
+                                    //myOpMode.telemetry.update();
+                                    //myOpMode.sleep(3000);
+                                    retVal = LOCATION.CENTER;
+                                } else  {
+                                    //myOpMode.telemetry.addData("Gold location",goldMineralX);
+                                    //myOpMode.telemetry.addData("Gold Mineral Position", "Right");
+                                    //myOpMode.telemetry.update();
+                                    //myOpMode.sleep(3000);
+                                    retVal = LOCATION.RIGHT;
+                                }
+                                timeLeft = false;
+                            }
+                        }
+                        myOpMode.telemetry.update();
+                    }
+                }
+                if (System.currentTimeMillis() > quitTime) {
+                    timeLeft = false;
+                    //Most likely cause of timeout is two white balls and not seeing one of them.
+                    //GUESS that the gold mineral is on the left.
+                    retVal = LOCATION.LEFT;
+                }
+            }
+        }
+
+        /*
+            while (myOpMode.opModeIsActive() && timeLeft) {
+                if (tfod != null) {
+                    // getUpdatedRecognitions() will return null if no new information is available since
+                    // the last time that call was made.
+                    List<Recognition> updatedRecognitions = tfod.getUpdatedRecognitions();
+                    if (updatedRecognitions != null) {
                       myOpMode.telemetry.addData("# Object Detected", updatedRecognitions.size());
                       if (updatedRecognitions.size() == 2) {
                         int goldMineralX = -1;
@@ -140,9 +195,13 @@ public class GoldBlockDetection {
                 }
                 if (System.currentTimeMillis() > quitTime) {
                     timeLeft = false;
+                    //Most likely cause of timeout is two white balls and not seeing one of them.
+                    //GUESS that the gold mineral is on the left.
+                    retVal = LOCATION.LEFT;
                 }
             }
         }
+        */
 
         if (tfod != null) {
             tfod.shutdown();

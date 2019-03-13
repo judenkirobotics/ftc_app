@@ -107,7 +107,7 @@ public class AutonomousStates {
 
 
     //Define all of the available states for AutoState.   Add new states before PAUSE
-    public enum AutoStates {LOWER, DETECTGOLD, PUSHBLOCK, BLOCKPIVOT, BLOCKFORWARD, BLOCKREVERSE ,MOVE, SWING, PADDLE, DETECT, TOKEN, PAUSE, WAIT, RAISE}
+    public enum AutoStates {LOWER, DETECTGOLD, PUSHBLOCK, PUSHBLOCK2, BLOCKPIVOT, BLOCKFORWARD, BLOCKREVERSE ,MOVE, SWING, PADDLE, DETECT, TOKEN, PAUSE, WAIT, RAISE}
 
 
     //Define AutoState run intervals here
@@ -333,32 +333,55 @@ public class AutonomousStates {
                     case DETECTGOLD:
                         //GoldBlockDetection.LOCATION location;
                         dParm.Block_Location = blockDetection.detectGoldBlock(cmd[CurrentAutoState].timeLimit);
-                        opMode.telemetry.addData("block located ",dParm.Block_Location );
-                        opMode.telemetry.update();
+                        //opMode.telemetry.addData("block located ",dParm.Block_Location );
+                        //opMode.telemetry.update();
                         stage_complete = true;
                         break;
                     case PUSHBLOCK:
                         stage_complete = true;
                         switch(dParm.Block_Location) {
                             case LEFT:
-                                blockHeading = 326;
-                                blockDistance = 17;
+                                blockHeading = 316;
+                                blockDistance = 22;
+                                break;
                             case CENTER:
                                 blockHeading = 0;
-                                blockDistance = 13;
+                                blockDistance = 16;
+                                break;
                             case RIGHT:
                                 blockHeading = 30;
-                                blockDistance = 20;
+                                blockDistance = 22;
+                                break;
                             case ERROR:
                             default:
                                 break;
                         }
-                        // have robot turn to block heading, move forward block distance, move backwards block distance
                         break;
+
                     case BLOCKPIVOT:
                         if (robotDrive.getMoveStatus() == Drive.MoveStatus.AVAILABLE) {
                             Drive.MoveType type = Drive.MoveType.STOP;
-                            if (dParm.Block_Location == GoldBlockDetection.LOCATION.LEFT) {
+
+                            switch(dParm.Block_Location) {
+                                case LEFT:
+                                    type = Drive.MoveType.PIVOTLEFT;
+                                    break;
+                                case CENTER:
+                                    type = Drive.MoveType.PIVOTLEFT;
+                                    break;
+                                case RIGHT:
+                                    type = Drive.MoveType.PIVOTRIGHT;
+                                    break;
+                                case ERROR:
+                                    stage_complete = true;
+                                    break;
+                                default:
+                                    //stage_complete = true;
+                                    break;
+                            }
+
+                            /*if (dParm.Block_Location == GoldBlockDetection.LOCATION.LEFT) {
+
                                 type = Drive.MoveType.PIVOTLEFT;
                             }
                             else if (dParm.Block_Location == GoldBlockDetection.LOCATION.RIGHT) {
@@ -366,11 +389,10 @@ public class AutonomousStates {
                             }
                             else {
                                 stage_complete = true;
-                            }
+                            }*/
                             if (!stage_complete) {
-                                robotDrive.move(type , blockHeading, 0.5);
+                                robotDrive.move(type , blockHeading, 1.0);
                             }
-
                         }
                         if (robotDrive.getMoveStatus() == Drive.MoveStatus.COMPLETE) {
                             robotDrive.move(Drive.MoveType.STOP, 0, 0);
@@ -380,7 +402,7 @@ public class AutonomousStates {
                     case BLOCKFORWARD:
                         if (robotDrive.getMoveStatus() == Drive.MoveStatus.AVAILABLE) {
                             blockDistance += cmd[CurrentAutoState].value3;
-                            robotDrive.move(Drive.MoveType.FORWARD, blockDistance, 0.7);
+                            robotDrive.move(Drive.MoveType.FORWARD, blockDistance, 1.0);
                         }
                         if (robotDrive.getMoveStatus() == Drive.MoveStatus.COMPLETE) {
                             robotDrive.move(Drive.MoveType.STOP, 0, 0);
@@ -390,7 +412,7 @@ public class AutonomousStates {
                     case BLOCKREVERSE:
                         if (robotDrive.getMoveStatus() == Drive.MoveStatus.AVAILABLE) {
                             blockDistance -= cmd[CurrentAutoState].value3;
-                            robotDrive.move(Drive.MoveType.REVERSE, blockDistance, 0.7);
+                            robotDrive.move(Drive.MoveType.REVERSE, blockDistance, 1.0);
                         }
                         if (robotDrive.getMoveStatus() == Drive.MoveStatus.COMPLETE) {
                             robotDrive.move(Drive.MoveType.STOP, 0, 0);
