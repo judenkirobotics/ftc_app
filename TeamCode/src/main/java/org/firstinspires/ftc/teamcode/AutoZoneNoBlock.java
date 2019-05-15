@@ -34,7 +34,7 @@ import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
 
-@Autonomous(name="Zone NoBlock", group="Pushbot")
+//@Autonomous(name="Zone NoBlock", group="Pushbot")
 @SuppressWarnings("WeakerAccess")
 public class AutoZoneNoBlock extends LinearOpMode {
 

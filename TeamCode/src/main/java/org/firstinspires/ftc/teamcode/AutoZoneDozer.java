@@ -34,7 +34,7 @@ import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
 
-@Autonomous(name="Zone Dozer", group="Pushbot")
+//@Autonomous(name="Zone Dozer", group="Pushbot")
 @SuppressWarnings("WeakerAccess")
 public class AutoZoneDozer extends LinearOpMode {
 

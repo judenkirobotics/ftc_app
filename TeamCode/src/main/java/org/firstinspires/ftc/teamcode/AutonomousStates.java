@@ -345,8 +345,8 @@ public class AutonomousStates {
                                 blockDistance = 22;
                                 break;
                             case CENTER:
-                                blockHeading = 0;
-                                blockDistance = 16;
+                                blockHeading = 355;
+                                blockDistance = 18;
                                 break;
                             case RIGHT:
                                 blockHeading = 30;

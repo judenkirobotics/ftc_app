@@ -37,7 +37,7 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 
-@Autonomous(name="Hokey Pokey", group="Pushbot")
+//@Autonomous(name="Hokey Pokey", group="Pushbot")
 @SuppressWarnings("WeakerAccess")
 public class HokeyPokey extends LinearOpMode {
 

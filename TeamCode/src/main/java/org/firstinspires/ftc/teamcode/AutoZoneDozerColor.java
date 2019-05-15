@@ -29,7 +29,7 @@ package org.firstinspires.ftc.teamcode;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
-@Autonomous(name="Zone Dozer Color", group="Pushbot")
+//@Autonomous(name="Zone Dozer Color", group="Pushbot")
 @SuppressWarnings("WeakerAccess")
 public class AutoZoneDozerColor extends LinearOpMode {
 

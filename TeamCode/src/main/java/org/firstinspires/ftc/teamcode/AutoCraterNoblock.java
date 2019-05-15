@@ -34,7 +34,7 @@ import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
 
-@Autonomous(name="Crater NoBlock", group="Pushbot")
+//@Autonomous(name="Crater NoBlock", group="Pushbot")
 @SuppressWarnings("WeakerAccess")
 public class AutoCraterNoblock extends LinearOpMode {
 
